@@ -1,0 +1,3749 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>HORIZON SPEED 3D : OVERDRIVE (완성본 + 경쟁 로비)</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&family=Orbitron:wght@700;900&display=swap" rel="stylesheet">
+<style>
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+  }
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #040712;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    color: #f8fafc;
+    touch-action: none;
+  }
+  .font-racing { font-family: 'Orbitron', sans-serif; }
+
+  #canvas-container { position: fixed; inset: 0; z-index: 1; }
+  canvas { display: block; width: 100%; height: 100%; }
+
+  /* 세로 화면 회전 경고 오버레이 */
+  #portrait-warning {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: rgba(4, 7, 18, 0.96);
+    backdrop-filter: blur(10px);
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 24px;
+  }
+  #portrait-warning .icon {
+    font-size: 56px;
+    margin-bottom: 14px;
+    animation: rotatePhone 1.8s infinite ease-in-out;
+  }
+  @keyframes rotatePhone {
+    0%, 100% { transform: rotate(0deg); }
+    50% { transform: rotate(-90deg); }
+  }
+  @media (orientation: portrait) {
+    #portrait-warning { display: flex; }
+  }
+
+  /* 공통 UI 레이어 */
+  .ui-layer { position: fixed; inset: 0; z-index: 10; pointer-events: none; display: none; }
+  .ui-layer.active { display: block; }
+  .interactive { pointer-events: auto; }
+
+  /* 공통 3D 입체 버튼 */
+  .btn {
+    border: none;
+    border-radius: 12px;
+    cursor: pointer;
+    font-weight: 800;
+    color: #fff;
+    background: linear-gradient(180deg, rgba(30, 41, 59, 0.92), rgba(15, 23, 42, 0.96));
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+    transition: transform 0.08s ease, filter 0.15s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+  .btn:active { transform: scale(0.95); filter: brightness(1.15); }
+  .btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+  .btn-primary { background: linear-gradient(135deg, #0ea5e9, #2563eb); border-color: #7dd3fc; }
+  .btn-gold { background: linear-gradient(135deg, #f59e0b, #d97706); border-color: #fde68a; color: #111827; }
+  .btn-dia { background: linear-gradient(135deg, #38bdf8, #6366f1); border-color: #bae6fd; }
+  .btn-danger { background: linear-gradient(135deg, #ef4444, #b91c1c); border-color: #fca5a5; }
+  .btn-kakao { background: #FEE500; color: #191919; border-color: #fde047; }
+  .btn-sp { background: linear-gradient(135deg, #10b981, #059669); border-color: #6ee7b7; }
+
+  /* 티어 배지 */
+  .tier-badge {
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-weight: 900;
+    font-size: 11px;
+    color: #fff;
+    letter-spacing: 0.4px;
+    display: inline-block;
+  }
+  .tier-D { background: #64748b; }
+  .tier-C { background: #10b981; }
+  .tier-B { background: #3b82f6; }
+  .tier-A { background: #a855f7; }
+  .tier-S { background: linear-gradient(135deg, #f59e0b, #ef4444, #ec4899); box-shadow: 0 0 10px rgba(245, 158, 11, 0.7); }
+  .tier-H {
+    background: linear-gradient(135deg, #f59e0b, #dc2626 55%, #18181b);
+    border: 1px solid #fde047;
+    color: #fef08a;
+    box-shadow: 0 0 14px rgba(220, 38, 38, 0.85), 0 0 6px rgba(250, 204, 21, 0.6);
+  }
+
+  /* 홈 화면 상단/중앙/하단 */
+  #home-ui .top-bar {
+    position: absolute;
+    top: 12px;
+    left: max(14px, env(safe-area-inset-left));
+    right: max(14px, env(safe-area-inset-right));
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .hud-pill {
+    background: rgba(10, 16, 34, 0.78);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(100, 160, 255, 0.3);
+    border-radius: 14px;
+    padding: 7px 13px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+    font-size: 12px;
+    font-weight: 800;
+  }
+  .stat-chip { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+  .top-actions { display: flex; gap: 7px; }
+  .top-actions .btn { padding: 7px 11px; font-size: 12px; }
+
+  #home-ui .title-badge {
+    position: absolute;
+    top: 62px;
+    left: max(18px, env(safe-area-inset-left));
+    pointer-events: none;
+  }
+  .test-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 10px;
+    border-radius: 99px;
+    font-size: 11px;
+    font-weight: 800;
+    color: #fef08a;
+    background: linear-gradient(90deg, rgba(220, 38, 38, 0.8), rgba(245, 158, 11, 0.75));
+    border: 1px solid rgba(253, 224, 71, 0.7);
+    margin-bottom: 5px;
+    box-shadow: 0 0 12px rgba(220, 38, 38, 0.45);
+  }
+  .game-title {
+    font-size: 26px;
+    font-weight: 900;
+    letter-spacing: 1px;
+    font-style: italic;
+    background: linear-gradient(90deg, #ffffff, #38bdf8, #f59e0b);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    filter: drop-shadow(0 3px 10px rgba(14, 165, 233, 0.45));
+  }
+  .car-showcase-info {
+    margin-top: 6px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(10, 16, 34, 0.76);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    padding: 6px 12px;
+    border-radius: 10px;
+    font-size: 12px;
+    backdrop-filter: blur(6px);
+  }
+  .orbit-hint {
+    position: absolute;
+    bottom: 84px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 11px;
+    color: rgba(226, 232, 240, 0.72);
+    background: rgba(15, 23, 42, 0.52);
+    padding: 3px 10px;
+    border-radius: 99px;
+    pointer-events: none;
+  }
+
+  #home-ui .bottom-nav {
+    position: absolute;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 10px;
+    padding: 8px 12px;
+    background: rgba(8, 14, 30, 0.8);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(120, 170, 255, 0.28);
+    border-radius: 18px;
+    max-width: 96vw;
+  }
+  #home-ui .bottom-nav .btn {
+    padding: 11px 18px;
+    font-size: 14px;
+    min-width: 110px;
+    white-space: nowrap;
+  }
+
+  /* 인게임 슬림 HUD */
+  #race-ui .hud-left-box {
+    position: absolute;
+    top: 10px;
+    left: max(62px, env(safe-area-inset-left));
+    background: rgba(9, 15, 30, 0.68);
+    backdrop-filter: blur(6px);
+    border: 1px solid rgba(100, 160, 255, 0.28);
+    border-radius: 12px;
+    padding: 6px 12px;
+    min-width: 165px;
+  }
+  .hud-mode-tag { font-size: 11px; color: #38bdf8; font-weight: 800; white-space: nowrap; }
+  .hud-metrics { display: flex; gap: 14px; margin-top: 2px; align-items: baseline; }
+  .hud-metric-val { font-size: 15px; font-weight: 900; color: #fbbf24; }
+  .hud-metric-lbl { font-size: 9px; color: #94a3b8; }
+
+  #race-ui .hud-center-slim {
+    position: absolute;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    height: 36px;
+    background: rgba(9, 15, 30, 0.68);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(125, 211, 252, 0.35);
+    border-radius: 999px;
+    padding: 0 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+    white-space: nowrap;
+  }
+  .slim-speed-val {
+    font-size: 20px;
+    font-weight: 900;
+    font-style: italic;
+    color: #ffffff;
+    min-width: 48px;
+    text-align: right;
+  }
+  .slim-speed-unit { font-size: 10px; font-weight: 800; color: #38bdf8; margin-left: -6px; }
+  .slim-divider { width: 1px; height: 18px; background: rgba(148, 163, 184, 0.35); }
+  .slim-hp-wrap {
+    width: 72px;
+    height: 8px;
+    background: rgba(255, 255, 255, 0.14);
+    border-radius: 99px;
+    overflow: hidden;
+  }
+  .slim-hp-fill {
+    height: 100%;
+    width: 100%;
+    background: linear-gradient(90deg, #10b981, #34d399);
+    transition: width 0.12s;
+  }
+  .slim-hp-pct { font-size: 11px; font-weight: 800; color: #e2e8f0; min-width: 32px; }
+
+  #race-ui .hud-right-box {
+    position: absolute;
+    top: 10px;
+    right: max(12px, env(safe-area-inset-right));
+    display: flex;
+    gap: 7px;
+  }
+  #race-ui .hud-right-box .btn { padding: 7px 12px; font-size: 12px; height: 36px; }
+
+  /* 조작 컨트롤 */
+  #controls-left {
+    position: absolute;
+    bottom: 18px;
+    left: max(18px, env(safe-area-inset-left));
+    display: flex;
+    gap: 12px;
+    align-items: center;
+  }
+  #controls-right {
+    position: absolute;
+    bottom: 18px;
+    right: max(18px, env(safe-area-inset-right));
+    display: flex;
+    gap: 12px;
+    align-items: flex-end;
+  }
+  .ctrl-btn {
+    width: var(--ctrl-size, 74px);
+    height: var(--ctrl-size, 74px);
+    border-radius: 18px;
+    font-size: 24px;
+    font-weight: 900;
+    color: #fff;
+    background: rgba(15, 23, 42, 0.68);
+    border: 2px solid rgba(148, 163, 184, 0.5);
+    backdrop-filter: blur(4px);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    touch-action: none;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45);
+  }
+  .ctrl-btn.active { transform: scale(0.92); background: rgba(56, 189, 248, 0.45); border-color: #38bdf8; }
+  .ctrl-btn.gas {
+    height: calc(var(--ctrl-size, 74px) * 1.25);
+    background: rgba(16, 185, 129, 0.72);
+    border-color: #6ee7b7;
+    font-size: 13px;
+  }
+  .ctrl-btn.brake {
+    background: rgba(225, 29, 72, 0.72);
+    border-color: #fda4af;
+    font-size: 12px;
+  }
+  .ctrl-btn.skill {
+    width: calc(var(--ctrl-size, 74px) * 0.98);
+    height: calc(var(--ctrl-size, 74px) * 0.98);
+    border-radius: 50%;
+    background: linear-gradient(135deg, #f59e0b, #dc2626);
+    border-color: #fde047;
+    font-size: 12px;
+    box-shadow: 0 0 18px rgba(245, 158, 11, 0.65);
+    display: none;
+  }
+  .ctrl-btn.skill.ready { animation: pulseSkill 1.1s infinite; }
+  @keyframes pulseSkill {
+    0%, 100% { box-shadow: 0 0 12px rgba(245, 158, 11, 0.7); transform: scale(1); }
+    50% { box-shadow: 0 0 28px rgba(239, 68, 68, 0.98); transform: scale(1.05); }
+  }
+
+  /* 가상 핸들 UI */
+  #wheel-pad {
+    display: none;
+    width: calc(var(--ctrl-size, 74px) * 1.72);
+    height: calc(var(--ctrl-size, 74px) * 1.72);
+    border-radius: 50%;
+    border: 6px solid rgba(148, 163, 184, 0.65);
+    background: rgba(15, 23, 42, 0.58);
+    position: relative;
+    align-items: center;
+    justify-content: center;
+    touch-action: none;
+  }
+  #wheel-pad::before {
+    content: '';
+    position: absolute;
+    width: 100%;
+    height: 6px;
+    background: rgba(148, 163, 184, 0.5);
+  }
+  #wheel-pad::after {
+    content: 'STEER';
+    font-size: 10px;
+    font-weight: 800;
+    color: #38bdf8;
+    z-index: 2;
+    background: #0f172a;
+    padding: 4px 8px;
+    border-radius: 99px;
+    border: 1px solid #38bdf8;
+  }
+
+  /* 토스트 알림 */
+  #toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(10px);
+    z-index: 999;
+    background: rgba(12, 19, 38, 0.9);
+    border: 1px solid #38bdf8;
+    color: #fff;
+    padding: 8px 16px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 800;
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.6);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.22s, transform 0.22s;
+    max-width: 55vw;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  #toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+
+  /* 모달 오버레이 */
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    background: rgba(4, 8, 20, 0.84);
+    backdrop-filter: blur(8px);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 12px;
+  }
+  .modal-backdrop.open { display: flex; }
+  .modal-box {
+    width: 100%;
+    max-width: 860px;
+    max-height: 92vh;
+    overflow-y: auto;
+    background: linear-gradient(180deg, #0f172a, #090e1a);
+    border: 1px solid rgba(100, 160, 255, 0.35);
+    border-radius: 20px;
+    padding: 16px 20px;
+    box-shadow: 0 20px 55px rgba(0, 0, 0, 0.78);
+  }
+  .modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 10px;
+    margin-bottom: 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .modal-title { font-size: 17px; font-weight: 900; display: flex; align-items: center; gap: 8px; }
+  .close-btn { width: 32px; height: 32px; border-radius: 10px; font-size: 15px; }
+
+  /* 모드 선택 */
+  .mode-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .mode-card {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 16px;
+    padding: 14px;
+    cursor: pointer;
+    transition: 0.15s;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .mode-card:hover { border-color: #38bdf8; background: rgba(56, 189, 248, 0.08); transform: translateY(-2px); }
+  .mode-card h3 { font-size: 16px; color: #38bdf8; }
+  .mode-card p { font-size: 12px; color: #cbd5e1; line-height: 1.45; }
+
+  /* 경쟁 모드 로비 카드 */
+  .comp-top-grid {
+    display: grid;
+    grid-template-columns: 1.15fr 1fr;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  .comp-card {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(100, 160, 255, 0.25);
+    border-radius: 14px;
+    padding: 11px 13px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 6px;
+  }
+  .comp-card-label { font-size: 11px; color: #94a3b8; font-weight: 800; }
+
+  /* 차고 & SP 스텟 강화 & 뽑기 */
+  .tier-tabs { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; align-items: center; }
+  .tier-tab { padding: 6px 13px; font-size: 12px; border-radius: 10px; opacity: 0.72; }
+  .tier-tab.active { opacity: 1; box-shadow: 0 0 12px rgba(56, 189, 248, 0.55); border-color: #fff; }
+  .sp-shop-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    background: rgba(16, 185, 129, 0.12);
+    border: 1px solid rgba(52, 211, 153, 0.38);
+    border-radius: 12px;
+    padding: 8px 12px;
+    margin-bottom: 10px;
+    font-size: 12px;
+  }
+  .garage-layout { display: grid; grid-template-columns: 1.05fr 1.15fr; gap: 12px; }
+  .car-list {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+    max-height: 48vh;
+    overflow-y: auto;
+    padding-right: 4px;
+  }
+  .car-card {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 12px;
+    padding: 9px;
+    cursor: pointer;
+    transition: 0.12s;
+  }
+  .car-card.selected { border-color: #38bdf8; background: rgba(56, 189, 248, 0.16); }
+  .car-card .name { font-size: 13px; font-weight: 800; margin-top: 4px; }
+  .car-card .sub { font-size: 11px; color: #94a3b8; margin-top: 2px; }
+  .car-detail {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 14px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .stat-row { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+  .stat-row .label { width: 58px; color: #cbd5e1; font-size: 11px; }
+  .stat-bar-bg { flex: 1; height: 8px; background: rgba(255, 255, 255, 0.1); border-radius: 99px; overflow: hidden; }
+  .stat-bar-fill { height: 100%; background: linear-gradient(90deg, #38bdf8, #818cf8); border-radius: 99px; transition: width 0.2s; }
+  .stat-up-btn { padding: 3px 8px; font-size: 11px; border-radius: 8px; }
+  .gacha-bar {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  /* 레벨 그리드 */
+  .level-grid { display: grid; grid-template-columns: repeat(10, 1fr); gap: 6px; max-height: 54vh; overflow-y: auto; padding: 4px; }
+  .lvl-btn {
+    padding: 9px 4px;
+    font-size: 12px;
+    border-radius: 8px;
+    font-weight: 800;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    color: #fff;
+    cursor: pointer;
+  }
+  .lvl-btn.cleared { background: rgba(16, 185, 129, 0.22); border-color: #10b981; }
+  .lvl-btn.current { background: linear-gradient(135deg, #0ea5e9, #2563eb); border-color: #fff; }
+  .lvl-btn.locked { opacity: 0.35; cursor: not-allowed; }
+
+  /* 주행 옵션 */
+  .opt-group { margin-bottom: 10px; }
+  .opt-group label { display: block; font-size: 11px; color: #94a3b8; margin-bottom: 5px; font-weight: 700; }
+  .chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
+  .opt-chip {
+    padding: 6px 11px;
+    border-radius: 10px;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: #e2e8f0;
+  }
+  .opt-chip.active { background: #0284c7; border-color: #7dd3fc; color: #fff; }
+  .opt-chip.locked { opacity: 0.4; cursor: not-allowed; }
+
+  .setting-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 9px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    font-size: 13px;
+  }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.6); border-radius: 99px; }
+  ::-webkit-scrollbar-thumb { background: rgba(56, 189, 248, 0.45); border-radius: 99px; }
+</style>
+</head>
+<body>
+
+<!-- 세로 모드 경고 -->
+<div id="portrait-warning">
+  <div class="icon">📱</div>
+  <h2>가로 모드로 회전해 주세요</h2>
+  <p style="color:#94a3b8; margin-top:8px; font-size:13px;">HORIZON SPEED 3D는 가로 화면 전용 레이싱 게임입니다.</p>
+</div>
+
+<!-- Three.js 3D 캔버스 컨테이너 -->
+<div id="canvas-container"></div>
+
+<!-- 하단 중앙 토스트 알림 -->
+<div id="toast">알림</div>
+
+<!-- =========================================================
+     1. 홈 화면 UI
+     ========================================================= -->
+<div id="home-ui" class="ui-layer active">
+  <div class="top-bar">
+    <div class="hud-pill interactive">
+      <div class="stat-chip">⭐ Lv.<span id="hud-lvl">1</span></div>
+      <div class="stat-chip">🏆 <span id="hud-trophy">0</span></div>
+      <div class="stat-chip" style="color:#fbbf24;">🪙 <span id="hud-gold">5,000</span></div>
+      <div class="stat-chip" style="color:#38bdf8;">💎 <span id="hud-dia">200</span></div>
+      <div class="stat-chip" style="color:#34d399;">⚡ <span id="hud-sp">15</span> SP</div>
+    </div>
+    <div class="top-actions interactive">
+      <button class="btn" onclick="toggleHomeTime()">🌗 낮/밤</button>
+      <button class="btn" onclick="toggleFullscreen()">⛶ 전체화면</button>
+      <button class="btn btn-kakao" onclick="openModal('donate-modal')">💛 후원하기</button>
+    </div>
+  </div>
+
+  <div class="title-badge">
+    <div class="test-badge">🔥 히든 카 테스트판 (전 차량 22종 해금)</div>
+    <div class="game-title">HORIZON SPEED 3D</div>
+    <div class="car-showcase-info">
+      <span id="home-car-tier" class="tier-badge tier-H">HIDDEN</span>
+      <span id="home-car-name" style="font-weight:800;">인페르노 블레이즈</span>
+      <span style="color:#94a3b8;">|</span>
+      <span style="color:#38bdf8; font-weight:800;">OVR <span id="home-car-ovr">100</span></span>
+      <span style="color:#fbbf24; font-weight:800;"><span id="home-car-spd">800</span> km/h</span>
+    </div>
+  </div>
+
+  <div class="orbit-hint">↔ 드래그하여 3D 차량 360° 회전 감상</div>
+
+  <div class="bottom-nav interactive">
+    <button class="btn btn-primary" onclick="openModal('mode-modal')">🏁 시작</button>
+    <button class="btn" onclick="openModal('garage-modal')">🚗 차량 선택</button>
+    <button class="btn" onclick="openModal('save-modal')">💾 저장/로드</button>
+    <button class="btn" onclick="openModal('settings-modal')">⚙️ 설정</button>
+  </div>
+</div>
+
+<!-- =========================================================
+     2. 인게임 슬림 HUD & 조작 컨트롤
+     ========================================================= -->
+<div id="race-ui" class="ui-layer">
+  <div class="hud-left-box">
+    <div id="race-mode-title" class="hud-mode-tag">거리 주행 (6차선) · 도시</div>
+    <div class="hud-metrics">
+      <div>
+        <div id="race-stat1-val" class="hud-metric-val">1위 / 8</div>
+        <div id="race-stat1-lbl" class="hud-metric-lbl">현재 순위</div>
+      </div>
+      <div>
+        <div id="race-stat2-val" class="hud-metric-val" style="color:#fff;">0.00 km</div>
+        <div id="race-stat2-lbl" class="hud-metric-lbl">주행 거리</div>
+      </div>
+      <div id="race-timer-wrap" style="display:none;">
+        <div id="race-timer-val" class="hud-metric-val" style="color:#38bdf8;">01:30</div>
+        <div class="hud-metric-lbl">남은 시간</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="hud-center-slim">
+    <span id="speed-display" class="slim-speed-val font-racing">0</span>
+    <span class="slim-speed-unit font-racing">KM/H</span>
+    <span class="slim-divider"></span>
+    <div class="slim-hp-wrap"><div id="hp-bar" class="slim-hp-fill"></div></div>
+    <span id="hp-text" class="slim-hp-pct font-racing">100%</span>
+  </div>
+
+  <div class="hud-right-box interactive">
+    <button class="btn" onclick="togglePause()">⏸ 일시정지</button>
+    <button class="btn btn-danger" onclick="exitRace()">🚪 나가기</button>
+  </div>
+
+  <div id="controls-left" class="interactive">
+    <div id="btn-left" class="ctrl-btn">◀</div>
+    <div id="btn-right" class="ctrl-btn">▶</div>
+    <div id="wheel-pad"></div>
+  </div>
+
+  <div id="controls-right" class="interactive">
+    <div id="btn-skill" class="ctrl-btn skill" onclick="activateSkill()">
+      <span id="skill-icon" style="font-size:20px; line-height:1;">🔥</span>
+      <span id="skill-cd" style="font-size:11px; margin-top:2px;">0%</span>
+    </div>
+    <div id="btn-brake" class="ctrl-btn brake">🛑<span>브레이크</span></div>
+    <div id="btn-gas" class="ctrl-btn gas">🔥<span>가속</span></div>
+  </div>
+</div>
+
+<!-- =========================================================
+     3. 모달 오버레이들
+     ========================================================= -->
+
+<!-- [모달] 게임 모드 선택 -->
+<div id="mode-modal" class="modal-backdrop">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div class="modal-title">🏁 게임 모드 선택</div>
+      <button class="btn close-btn" onclick="closeAllModals()">✕</button>
+    </div>
+    <div class="mode-grid">
+      <div class="mode-card" onclick="openLevelModal()">
+        <div>
+          <h3>📈 레벨 모드 (1~100)</h3>
+          <p>홀수 단계 8인 경주(3차선) / 짝수 단계 1분 30초 목표 거리 완주! 클리어 시 +2 SP 지급.</p>
+        </div>
+        <button class="btn btn-primary" style="padding:9px;">현재 <span id="mode-lvl-text">1</span>단계 도전</button>
+      </div>
+      <div class="mode-card" onclick="openDriveModal()">
+        <div>
+          <h3>🛣️ 주행 모드 (6차선)</h3>
+          <p>거리·시간·자유 주행 선택! 낮·밤, 4계절, 4종 날씨, 7종 고퀄리티 3D 맵을 자유롭게 조합하세요.</p>
+        </div>
+        <button class="btn btn-primary" style="padding:9px;">환경 커스텀</button>
+      </div>
+      <div class="mode-card" onclick="openCompetitiveModal()">
+        <div>
+          <h3>🏆 경쟁 모드 (8인)</h3>
+          <p>내 글로벌 랭킹과 현재 차량을 확인하고 AI 7대와 트로피 쟁탈전! 10연승 도전: <strong id="mode-streak-text" style="color:#fde047;">0/10</strong></p>
+        </div>
+        <button class="btn btn-gold" style="padding:9px;">🏆 로비 & 랭킹 열기</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- [모달] 경쟁 모드 로비 (내 랭킹 + 현재 자동차 + 플레이 버튼 + 글로벌 순위표) -->
+<div id="comp-modal" class="modal-backdrop">
+  <div class="modal-box" style="max-width:680px;">
+    <div class="modal-header">
+      <div class="modal-title">🏆 경쟁 모드 로비 & 글로벌 랭킹</div>
+      <button class="btn close-btn" onclick="closeAllModals()">✕</button>
+    </div>
+
+    <div class="comp-top-grid">
+      <!-- 내 랭킹 정보 + 닉네임 -->
+      <div class="comp-card">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <span class="comp-card-label">🏅 나의 글로벌 랭킹</span>
+          <span id="comp-my-rank" style="font-size:16px; font-weight:900; color:#fde047;">확인 중...</span>
+        </div>
+        <div style="display:flex; gap:12px; font-size:13px; font-weight:800; margin:2px 0;">
+          <span style="color:#fbbf24;">🏆 <span id="comp-my-trophy">0</span>점</span>
+          <span style="color:#f87171;">🔥 <span id="comp-my-streak">0</span>/10 연승</span>
+        </div>
+        <div style="display:flex; gap:6px; margin-top:2px;">
+          <input id="rank-nick-input" type="text" maxlength="12" placeholder="닉네임 (최대 12자)"
+            style="flex:1; min-width:0; padding:6px 9px; border-radius:8px; border:1px solid #38bdf8; background:#090e1a; color:#fff; font-size:12px; font-weight:700;">
+          <button class="btn btn-primary" style="padding:6px 10px; font-size:11px; white-space:nowrap;" onclick="saveNicknameAndSync()">저장</button>
+        </div>
+      </div>
+
+      <!-- 현재 장착 자동차 -->
+      <div class="comp-card">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <span class="comp-card-label">🚗 현재 출전 차량</span>
+          <button class="btn" style="padding:3px 9px; font-size:11px;" onclick="openModal('garage-modal')">차량 변경</button>
+        </div>
+        <div style="display:flex; align-items:center; gap:7px; margin:2px 0;">
+          <span id="comp-car-tier" class="tier-badge tier-H">HIDDEN</span>
+          <strong id="comp-car-name" style="font-size:15px;">인페르노 블레이즈</strong>
+        </div>
+        <div style="display:flex; justify-content:space-between; font-size:12px; font-weight:800;">
+          <span style="color:#38bdf8;">OVR <span id="comp-car-ovr">100</span></span>
+          <span style="color:#fbbf24;">최고 <span id="comp-car-spd">800</span> km/h</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 경쟁 모드 플레이 버튼 -->
+    <button class="btn btn-gold" style="width:100%; padding:12px; font-size:15px; margin-bottom:12px;" onclick="startCompetitiveMode()">
+      🏁 경쟁 모드 플레이 시작 (8인 트로피 쟁탈전)
+    </button>
+
+    <!-- 글로벌 순위표 -->
+    <div id="rank-status" style="font-size:12px; color:#94a3b8; margin-bottom:7px;">불러오는 중...</div>
+    <div id="rank-list" style="max-height:36vh; overflow-y:auto; display:flex; flex-direction:column; gap:6px; padding-right:2px;"></div>
+  </div>
+</div>
+
+<!-- [모달] 레벨 선택 (1~100단계) -->
+<div id="level-modal" class="modal-backdrop">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div class="modal-title">📈 레벨 모드 (1 ~ 100단계)</div>
+      <button class="btn close-btn" onclick="closeAllModals()">✕</button>
+    </div>
+    <p style="font-size:12px; color:#94a3b8; margin-bottom:10px;">홀수 단계: 8인 경주 승리 (3차선) / 짝수 단계: 1분 30초 내 목표 거리 완주 · 클리어 보상 +2 SP</p>
+    <div id="level-grid" class="level-grid"></div>
+  </div>
+</div>
+
+<!-- [모달] 주행 모드 커스텀 -->
+<div id="drive-modal" class="modal-backdrop">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div class="modal-title">🛣️ 주행 모드 커스텀 (6차선 양방향)</div>
+      <button class="btn close-btn" onclick="closeAllModals()">✕</button>
+    </div>
+    <div class="opt-group">
+      <label>주행 방식</label>
+      <div class="chip-row" id="opt-drive-type"></div>
+    </div>
+    <div class="opt-group">
+      <label>3D 맵 선택 (우주 Lv.20 / 미래 도시 Lv.40 해금)</label>
+      <div class="chip-row" id="opt-map"></div>
+    </div>
+    <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px;">
+      <div class="opt-group"><label>시간대</label><div class="chip-row" id="opt-time"></div></div>
+      <div class="opt-group"><label>계절</label><div class="chip-row" id="opt-season"></div></div>
+      <div class="opt-group"><label>날씨</label><div class="chip-row" id="opt-weather"></div></div>
+    </div>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px;">
+      <span style="font-size:11px; color:#94a3b8;">주행 모드 누적 거리: <strong id="drive-cum-km" style="color:#38bdf8;">0.00</strong> / 50.00 km</span>
+      <button class="btn btn-primary" style="padding:11px 26px; font-size:14px;" onclick="startDriveMode()">🚀 주행 출발</button>
+    </div>
+  </div>
+</div>
+
+<!-- [모달] 차고 & SP 스텟 강화 & 뽑기 -->
+<div id="garage-modal" class="modal-backdrop">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div class="modal-title">🚗 차고 & 스텟 강화 <span class="test-badge" style="margin:0;">전 차량 22종 해금</span></div>
+      <div style="display:flex; gap:10px; align-items:center; font-size:12px; font-weight:800;">
+        <span style="color:#fbbf24;">🪙 <span id="g-gold">0</span></span>
+        <span style="color:#38bdf8;">💎 <span id="g-dia">0</span></span>
+        <span style="color:#34d399;">⚡ <span id="g-sp">0</span> SP</span>
+        <button class="btn close-btn" onclick="closeAllModals()">✕</button>
+      </div>
+    </div>
+
+    <div class="sp-shop-bar">
+      <div><strong>⚡ 스텟 포인트(SP) 상점</strong> <span style="color:#94a3b8;">— 각 차량 4대 스텟 최대 Lv.15 강화 (OVR 100+ 돌파)</span></div>
+      <div style="display:flex; gap:6px;">
+        <button class="btn btn-gold" style="padding:5px 11px; font-size:11px;" onclick="buySP('gold')">+1 SP (🪙200)</button>
+        <button class="btn btn-dia" style="padding:5px 11px; font-size:11px;" onclick="buySP('dia')">+5 SP (💎10)</button>
+      </div>
+    </div>
+
+    <div class="tier-tabs" id="tier-tabs"></div>
+
+    <div class="garage-layout">
+      <div class="car-list" id="car-list"></div>
+      <div class="car-detail" id="car-detail"></div>
+    </div>
+
+    <div class="gacha-bar" id="gacha-bar"></div>
+  </div>
+</div>
+
+<!-- [모달] 설정 -->
+<div id="settings-modal" class="modal-backdrop">
+  <div class="modal-box" style="max-width:500px;">
+    <div class="modal-header">
+      <div class="modal-title">⚙️ 게임 설정</div>
+      <button class="btn close-btn" onclick="closeAllModals()">✕</button>
+    </div>
+    <div class="setting-row">
+      <span>🎵 배경음 (BGM)</span>
+      <button id="set-bgm" class="btn" style="padding:7px 16px;" onclick="toggleSetting('bgm')">ON</button>
+    </div>
+    <div class="setting-row">
+      <span>🔊 효과음 (SFX)</span>
+      <button id="set-sfx" class="btn" style="padding:7px 16px;" onclick="toggleSetting('sfx')">ON</button>
+    </div>
+    <div class="setting-row">
+      <span>🎮 조작 방식</span>
+      <button id="set-ctrl" class="btn btn-primary" style="padding:7px 16px;" onclick="toggleControlMode()">버튼 조작</button>
+    </div>
+    <div class="setting-row">
+      <span>📏 조작 키 크기 (<span id="set-size-val">74</span>px)</span>
+      <input type="range" min="54" max="100" value="74" id="set-size-range" oninput="updateCtrlSize(this.value)">
+    </div>
+    <div class="setting-row" style="border-bottom:none; padding-top:14px; gap:8px; flex-wrap:wrap;">
+      <button class="btn btn-dia" style="flex:1; padding:9px; font-size:12px;" onclick="grantTestBoost()">🧪 테스트 지원 (Lv+25 / +5000🪙 / +200💎 / +20 SP)</button>
+      <button id="btn-reset-confirm" class="btn btn-danger" style="padding:9px 14px; font-size:12px;" onclick="handleResetClick()">🗑️ 데이터 초기화</button>
+    </div>
+  </div>
+</div>
+
+<!-- [모달] 저장 / 로드 -->
+<div id="save-modal" class="modal-backdrop">
+  <div class="modal-box" style="max-width:540px;">
+    <div class="modal-header">
+      <div class="modal-title">💾 저장 / 불러오기</div>
+      <button class="btn close-btn" onclick="closeAllModals()">✕</button>
+    </div>
+    <p style="font-size:12px; color:#94a3b8; margin-bottom:10px;">모든 기록은 자동 저장되며, 수동 슬롯 3개 및 백업 코드 복원도 지원합니다. (테스트판 전 차량 22종 해금 유지)</p>
+    <div id="save-slots" style="display:flex; flex-direction:column; gap:8px; margin-bottom:12px;"></div>
+    <div style="background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.12); border-radius:12px; padding:10px;">
+      <div style="font-size:11px; color:#cbd5e1; font-weight:700; margin-bottom:6px;">📋 데이터 백업 코드</div>
+      <div style="display:flex; gap:6px;">
+        <input id="backup-input" type="text" placeholder="백업 코드를 붙여넣거나 복사하세요" style="flex:1; background:#090e1a; border:1px solid #334155; border-radius:8px; padding:7px 10px; color:#e2e8f0; font-size:11px;">
+        <button class="btn btn-primary" style="padding:7px 12px; font-size:11px;" onclick="exportBackupCode()">코드 복사</button>
+        <button class="btn btn-gold" style="padding:7px 12px; font-size:11px;" onclick="importBackupCode()">불러오기</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- [모달] 카카오페이 후원하기 -->
+<div id="donate-modal" class="modal-backdrop">
+  <div class="modal-box" style="max-width:420px; text-align:center;">
+    <div style="font-size:42px; margin-bottom:8px;">☕💛</div>
+    <h3 style="font-size:19px; font-weight:900; margin-bottom:8px;">개발자 후원하기 (카카오페이)</h3>
+    <p style="font-size:12px; color:#cbd5e1; line-height:1.5; margin-bottom:12px;">
+      HORIZON SPEED 3D를 재미있게 플레이해 주셔서 감사합니다!<br>
+      따뜻한 후원은 신규 히든 차량과 3D 트랙 업데이트에 큰 힘이 됩니다.
+    </p>
+    <div style="background:#090e1a; border:1px solid rgba(254,229,0,0.4); border-radius:10px; padding:8px; font-size:12px; color:#FEE500; margin-bottom:14px; word-break:break-all;">
+      https://qr.kakaopay.com/FC6k4IKs9
+    </div>
+    <div style="display:flex; gap:8px;">
+      <a href="https://qr.kakaopay.com/FC6k4IKs9" target="_blank" rel="noopener noreferrer" class="btn btn-kakao" style="flex:1; padding:11px; text-decoration:none;">카카오페이 열기 ↗</a>
+      <button class="btn" style="padding:11px 18px;" onclick="closeAllModals()">닫기</button>
+    </div>
+  </div>
+</div>
+
+<!-- [모달] 일시정지 -->
+<div id="pause-modal" class="modal-backdrop">
+  <div class="modal-box" style="max-width:340px; text-align:center;">
+    <h3 style="font-size:20px; font-weight:900; margin-bottom:14px;">⏸ 일시정지</h3>
+    <div style="display:flex; flex-direction:column; gap:9px;">
+      <button class="btn btn-primary" style="padding:11px;" onclick="togglePause()">▶ 계속 달리기</button>
+      <button class="btn" style="padding:11px;" onclick="retryRace()">🔄 다시 시작</button>
+      <button class="btn btn-danger" style="padding:11px;" onclick="exitRace()">🏠 홈으로 나가기</button>
+    </div>
+  </div>
+</div>
+
+<!-- [모달] 결과 정산 -->
+<div id="result-modal" class="modal-backdrop">
+  <div class="modal-box" style="max-width:440px; text-align:center;">
+    <h2 id="res-title" style="font-size:24px; font-weight:900; margin-bottom:6px;">🏆 미션 성공!</h2>
+    <p id="res-desc" style="color:#cbd5e1; font-size:13px; margin-bottom:14px;"></p>
+    <div id="res-rewards" style="background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1); border-radius:14px; padding:12px; margin-bottom:16px; font-weight:800; font-size:13px; line-height:1.85;"></div>
+    <div style="display:flex; gap:10px;">
+      <button class="btn" style="flex:1; padding:11px;" onclick="exitRace()">🏠 홈으로</button>
+      <button class="btn btn-primary" style="flex:1; padding:11px;" onclick="retryRace()">🔄 다시 달리기</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ============================================================================
+   1. 차량 데이터베이스 (기존 20종 + 신규 HIDDEN 티어 2종 = 총 22종)
+   ============================================================================ */
+const VEHICLES = [
+  { id:'d1', tier:'D', type:'bike', name:'기본 자전거', maxSpd:40, stats:[45,50,55,50], color:0x38bdf8 },
+  { id:'d2', tier:'D', type:'bike', name:'산악형 자전거', maxSpd:50, stats:[50,54,56,56], color:0x22c55e },
+  { id:'d3', tier:'D', type:'bike', name:'도로주행 자전거', maxSpd:62, stats:[58,58,60,56], color:0xf59e0b },
+  { id:'d4', tier:'D', type:'bike', name:'경기용 자전거', maxSpd:75, stats:[64,62,64,58], color:0xef4444 },
+
+  { id:'c1', tier:'C', type:'moto', name:'기본 오토바이', maxSpd:100, stats:[66,68,68,62], color:0x94a3b8 },
+  { id:'c2', tier:'C', type:'moto', name:'중급 오토바이', maxSpd:130, stats:[70,72,70,64], color:0x0ea5e9 },
+  { id:'c3', tier:'C', type:'car',  name:'소형 경차', maxSpd:160, stats:[72,70,74,72], color:0xfacc15 },
+  { id:'c4', tier:'C', type:'car',  name:'승용차', maxSpd:190, stats:[76,74,74,76], color:0xe2e8f0 },
+
+  { id:'b1', tier:'B', type:'car',    name:'고출력 장거리 카', maxSpd:225, stats:[78,76,78,80], color:0x3b82f6 },
+  { id:'b2', tier:'B', type:'muscle', name:'머슬카', maxSpd:255, stats:[80,82,74,84], color:0xf97316 },
+  { id:'b3', tier:'B', type:'super',  name:'스포츠카', maxSpd:285, stats:[83,84,82,79], color:0xef4444 },
+  { id:'b4', tier:'B', type:'super',  name:'스포츠카 2', maxSpd:310, stats:[85,86,84,81], color:0x8b5cf6 },
+
+  { id:'a1', tier:'A', type:'moto',  name:'초고성능 오토바이', maxSpd:345, stats:[88,92,90,78], color:0x10b981 },
+  { id:'a2', tier:'A', type:'moto',  name:'특수 오토바이', maxSpd:375, stats:[90,93,92,81], color:0x06b6d4 },
+  { id:'a3', tier:'A', type:'super', name:'슈퍼카', maxSpd:410, stats:[92,91,90,91], color:0xeab308 },
+  { id:'a4', tier:'A', type:'racer', name:'레이싱 카', maxSpd:440, stats:[94,92,92,90], color:0xec4899 },
+
+  {
+    id:'s1', tier:'S', type:'s_tier', name:'스카이 리프터', maxSpd:500, stats:[95,95,95,95], color:0x38bdf8,
+    skill:'sky', skillName:'반중력 공중 활강', cooldown:11,
+    skillDesc:'반중력 날개를 펼쳐 4초간 공중 부양하며 모든 차량 충돌을 무시하고 560 km/h로 활강합니다.'
+  },
+  {
+    id:'s2', tier:'S', type:'s_tier', name:'펄스임팩터', maxSpd:500, stats:[95,95,95,95], color:0xa855f7,
+    skill:'pulse', skillName:'초대형 충격파 캐논', cooldown:10,
+    skillDesc:'전방 85m 도로 전체를 쓸어버리는 초대형 에너지 캐논을 발사해 모든 차량을 공중으로 날리고 2초 정지시킵니다. 자신은 4.5초간 650 km/h 무적 질주!'
+  },
+  {
+    id:'s3', tier:'S', type:'s_tier', name:'라이트닝 볼트', maxSpd:500, stats:[95,95,95,95], color:0xfacc15,
+    skill:'bolt', skillName:'마하 번개 돌진', cooldown:12,
+    skillDesc:'1초간 번개를 응축한 뒤 880 km/h 마하 속도로 2초간 무적 초고속 돌파합니다.'
+  },
+  {
+    id:'s4', tier:'S', type:'s_tier', name:'블래스트 제트', maxSpd:500, stats:[95,95,95,95], color:0xf97316,
+    skill:'blast', skillName:'폭발 돌파 추진', cooldown:11,
+    skillDesc:'3.5초간 연속 폭발 추진으로 680 km/h 질주! 충돌 피해·감속 0이며 부딪힌 차량을 옆으로 날려 2초간 정지시킵니다.'
+  },
+
+  {
+    id:'h1', tier:'H', type:'inferno', name:'인페르노 블레이즈', maxSpd:800, stats:[100,100,100,100], color:0xdc2626,
+    skill:'inferno', skillName:'인페르노 오버드라이브', cooldown:5,
+    skillDesc:'0 km/h부터 직접 가속 제어! 평소 질주 시에도 상시 무적(충돌 피해·감속 0)으로 부딪힌 모든 차량을 폭파 날림(2초 정지). 1초마다 불 에너지 +20%(5초 완충), 발동 시 3초간 1,500 km/h 광역 화염 폭주!'
+  },
+  {
+    id:'h2', tier:'H', type:'cat', name:'캣카', maxSpd:520, stats:[98,99,100,95], color:0xfb923c,
+    skill:'cat', skillName:'하악질 & 발톱 할퀴기', cooldown:8,
+    skillDesc:'날카로운 하악질과 3줄기 네온 발톱 할퀴기로 주변 및 전방 55m 차량에 붉은 스크래치를 새기고 4초간 속도를 40% 수준으로 대폭 감소! 캣카는 3초간 630 km/h 민첩 부스트!'
+  }
+];
+
+const ALL_CAR_IDS = VEHICLES.map(v => v.id);
+
+const GACHA_COST = {
+  D: { curr:'gold', c1:100, c10:900 },
+  C: { curr:'gold', c1:400, c10:3600 },
+  B: { curr:'gold', c1:1200, c10:10800 },
+  A: { curr:'dia',  c1:25, c10:225 },
+  S: { curr:'dia',  c1:80, c10:720, minLvl:50 }
+};
+
+const MAPS = [
+  { id:'city', name:'도시', minLvl:1 },
+  { id:'mountain', name:'산속 도로', minLvl:1 },
+  { id:'range', name:'산맥 도로', minLvl:1 },
+  { id:'country', name:'시골 도로', minLvl:1 },
+  { id:'undersea', name:'해저 터널', minLvl:1 },
+  { id:'space', name:'우주 트랙', minLvl:20 },
+  { id:'future', name:'미래 도시', minLvl:40 }
+];
+
+const SAVE_KEY = 'HORIZON_SPEED_3D_HIDDEN_TEST_V1';
+const SLOT_PREFIX = 'HORIZON_SPEED_3D_SLOT_';
+const MAX_STAT_LV = 15;
+
+/* ============================================================================
+   2. 안전 스토리지 & 게임 상태 관리
+   ============================================================================ */
+const safeStorage = {
+  get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
+  remove(k) { try { localStorage.removeItem(k); } catch (e) {} }
+};
+
+function createDefaultState() {
+  const pid = 'p_' + Math.random().toString(36).slice(2, 11);
+  return {
+    playerId: pid,
+    nickname: '레이서_' + pid.slice(2, 6).toUpperCase(),
+    gold: 5000,
+    dia: 200,
+    sp: 15,
+    level: 1,
+    maxCleared: 0,
+    trophies: 0,
+    winStreak: 0,
+    totalDriveKm: 0,
+    owned: [...ALL_CAR_IDS],
+    selectedCar: 'h1',
+    upgrades: {},
+    settings: { bgm: true, sfx: true, ctrlMode: 'button', ctrlSize: 74 }
+  };
+}
+
+let state = createDefaultState();
+let driveOpts = { type:'distance', map:'city', time:'day', season:'spring', weather:'clear' };
+let activeGarageTier = 'H';
+let homeIsNight = false;
+let resetConfirmStep = 0;
+
+function getCarUpgrades(carId) {
+  if (!state.upgrades[carId]) state.upgrades[carId] = [0, 0, 0, 0];
+  return state.upgrades[carId];
+}
+
+function getEffectiveStats(v) {
+  const up = getCarUpgrades(v.id);
+  return v.stats.map((base, idx) => base + up[idx] * 2);
+}
+
+function calcOVR(v) {
+  const s = getEffectiveStats(v);
+  return Math.round((s[0] + s[1] + s[2] + s[3]) / 4);
+}
+
+function getEffectiveMaxSpeed(v) {
+  const up = getCarUpgrades(v.id);
+  return Math.round(v.maxSpd * (1 + up[0] * 0.025));
+}
+
+function saveGame(showMsg = false) {
+  state.trophies = Math.max(0, Math.floor(state.trophies || 0));
+  safeStorage.set(SAVE_KEY, JSON.stringify(state));
+  if (showMsg) showToast('💾 게임 데이터가 저장되었습니다!');
+}
+
+function loadGame(showMsg = false) {
+  const raw = safeStorage.get(SAVE_KEY);
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw);
+      state = Object.assign(createDefaultState(), parsed);
+      state.trophies = Math.max(0, Math.floor(state.trophies || 0));
+      if (!state.playerId) state.playerId = 'p_' + Math.random().toString(36).slice(2, 11);
+      if (!state.nickname) state.nickname = '레이서_' + state.playerId.slice(2, 6).toUpperCase();
+      state.owned = [...ALL_CAR_IDS];
+      if (!state.upgrades) state.upgrades = {};
+    } catch (e) {}
+    if (showMsg) showToast('📂 저장 데이터를 불러왔습니다!');
+  } else if (showMsg) {
+    showToast('저장된 데이터가 없습니다.');
+  }
+  applySettingsUI();
+  updateHomeHUD();
+  if (gamePhase === 'home' && showcaseGroup) buildShowcaseCar();
+}
+
+function handleResetClick() {
+  const btn = document.getElementById('btn-reset-confirm');
+  if (resetConfirmStep === 0) {
+    resetConfirmStep = 1;
+    btn.textContent = '⚠️ 정말 초기화? (한 번 더 클릭)';
+    return;
+  }
+  resetConfirmStep = 0;
+  btn.textContent = '🗑️ 데이터 초기화';
+  const keepId = state.playerId;
+  const keepNick = state.nickname;
+  safeStorage.remove(SAVE_KEY);
+  state = createDefaultState();
+  state.playerId = keepId;
+  state.nickname = keepNick;
+  saveGame();
+  syncOnlineRanking();
+  applySettingsUI();
+  updateHomeHUD();
+  if (gamePhase === 'home') buildShowcaseCar();
+  closeAllModals();
+  showToast('🗑️ 초기화 완료! (테스트판 전 차량 22종 해금 유지)');
+}
+
+/* ============================================================================
+   3. Web Audio 사운드 엔진
+   ============================================================================ */
+let audioCtx = null;
+let bgmTimer = null;
+
+function initAudio() {
+  try {
+    if (!audioCtx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) audioCtx = new AC();
+    }
+    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+    if (state.settings.bgm && !bgmTimer) startBgmLoop();
+  } catch (e) {}
+}
+
+function startBgmLoop() {
+  if (bgmTimer) clearInterval(bgmTimer);
+  const bassNotes = [110, 110, 130.81, 146.83, 110, 130.81, 164.81, 146.83];
+  let step = 0;
+  bgmTimer = setInterval(() => {
+    if (!state.settings.bgm || !audioCtx || audioCtx.state !== 'running') return;
+    try {
+      const now = audioCtx.currentTime;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(bassNotes[step % bassNotes.length], now);
+      gain.gain.setValueAtTime(0.032, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(now);
+      osc.stop(now + 0.22);
+      step++;
+    } catch (e) {}
+  }, 250);
+}
+
+function playTone(freq, dur = 0.12, type = 'sine', vol = 0.14) {
+  if (!state.settings.sfx) return;
+  initAudio();
+  if (!audioCtx) return;
+  try {
+    const now = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, now);
+    gain.gain.setValueAtTime(vol, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(now);
+    osc.stop(now + dur);
+  } catch (e) {}
+}
+
+function playCrashSFX() {
+  playTone(95, 0.22, 'sawtooth', 0.2);
+  playTone(55, 0.28, 'square', 0.16);
+}
+
+function playBlastHitSFX() {
+  playTone(150, 0.24, 'sawtooth', 0.24);
+  setTimeout(() => playTone(65, 0.26, 'square', 0.2), 45);
+}
+
+function playSkillSFX() {
+  playTone(440, 0.12, 'triangle', 0.16);
+  setTimeout(() => playTone(880, 0.24, 'sine', 0.18), 75);
+}
+
+function playInfernoSFX() {
+  if (!state.settings.sfx) return;
+  initAudio();
+  if (!audioCtx) return;
+  try {
+    const now = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(105, now);
+    osc.frequency.exponentialRampToValueAtTime(560, now + 0.35);
+    osc.frequency.exponentialRampToValueAtTime(160, now + 0.75);
+    gain.gain.setValueAtTime(0.24, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.78);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(now);
+    osc.stop(now + 0.78);
+  } catch (e) {}
+}
+
+function playCatHissSFX() {
+  if (!state.settings.sfx) return;
+  initAudio();
+  if (!audioCtx) return;
+  try {
+    const now = audioCtx.currentTime;
+    const bufLen = Math.floor(audioCtx.sampleRate * 0.48);
+    const buffer = audioCtx.createBuffer(1, bufLen, audioCtx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufLen; i++) data[i] = Math.random() * 2 - 1;
+
+    const src = audioCtx.createBufferSource();
+    src.buffer = buffer;
+    const filter = audioCtx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(3800, now);
+    filter.frequency.exponentialRampToValueAtTime(1450, now + 0.45);
+    filter.Q.value = 1.7;
+
+    const g = audioCtx.createGain();
+    g.gain.setValueAtTime(0.01, now);
+    g.gain.linearRampToValueAtTime(0.35, now + 0.05);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.48);
+
+    src.connect(filter);
+    filter.connect(g);
+    g.connect(audioCtx.destination);
+    src.start(now);
+    src.stop(now + 0.48);
+
+    [0.04, 0.11, 0.18].forEach((delay, idx) => {
+      const osc = audioCtx.createOscillator();
+      const og = audioCtx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(2100 - idx * 220, now + delay);
+      osc.frequency.exponentialRampToValueAtTime(380, now + delay + 0.14);
+      og.gain.setValueAtTime(0.14, now + delay);
+      og.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.15);
+      osc.connect(og);
+      og.connect(audioCtx.destination);
+      osc.start(now + delay);
+      osc.stop(now + delay + 0.16);
+    });
+  } catch (e) {}
+}
+
+/* ============================================================================
+   4. THREE.JS 고퀄리티 3D 엔진 & 절차적 텍스처 빌더
+   ============================================================================ */
+let scene, camera, renderer, dirLight, ambLight, hemiLight;
+let skyDome = null, celestialGroup = null, horizonRing = null;
+let roadMesh = null, roadTex = null, groundMesh = null, groundTex = null;
+let sidewalkGroup = null, sidewalkTex = null;
+let canyonGroup = null, propGroup = null, props = [];
+let cloudGroup = null, clouds = [];
+let aiGroup = null, aiCars = [];
+let effectGroup = null, activeEffects = [];
+let showcaseGroup = null, playerMesh = null;
+let weatherPoints = null;
+
+let gamePhase = 'home';
+let clock = new THREE.Clock();
+
+let homeOrbitYaw = 0.55;
+let homeOrbitPitch = 0.22;
+let isDraggingShowcase = false;
+let dragLastX = 0, dragLastY = 0;
+
+const glowTexCache = {};
+function createGlowSprite(hexColor, size = 2.0) {
+  if (!glowTexCache[hexColor]) {
+    const c = document.createElement('canvas');
+    c.width = 128; c.height = 128;
+    const ctx = c.getContext('2d');
+    const grad = ctx.createRadialGradient(64, 64, 4, 64, 64, 62);
+    grad.addColorStop(0, '#ffffff');
+    grad.addColorStop(0.28, hexColor);
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 128, 128);
+    glowTexCache[hexColor] = new THREE.CanvasTexture(c);
+  }
+  const mat = new THREE.SpriteMaterial({
+    map: glowTexCache[hexColor],
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false
+  });
+  const sp = new THREE.Sprite(mat);
+  sp.scale.set(size, size, 1);
+  return sp;
+}
+
+function createSkyTexture(topHex, midHex, botHex, hasStars) {
+  const c = document.createElement('canvas');
+  c.width = 512; c.height = 256;
+  const ctx = c.getContext('2d');
+  const g = ctx.createLinearGradient(0, 0, 0, 256);
+  g.addColorStop(0, topHex);
+  g.addColorStop(0.52, midHex);
+  g.addColorStop(1, botHex);
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 512, 256);
+  if (hasStars) {
+    for (let i = 0; i < 240; i++) {
+      ctx.fillStyle = `rgba(255,255,255,${0.35 + Math.random() * 0.65})`;
+      const s = Math.random() > 0.85 ? 2 : 1.2;
+      ctx.fillRect(Math.random() * 512, Math.random() * 145, s, s);
+    }
+  }
+  return new THREE.CanvasTexture(c);
+}
+
+const buildingTexCache = {};
+function getBuildingTexture(variant, isNight) {
+  const key = `${variant}_${isNight}`;
+  if (buildingTexCache[key]) return buildingTexCache[key];
+
+  const c = document.createElement('canvas');
+  c.width = 256; c.height = 512;
+  const ctx = c.getContext('2d');
+
+  if (variant === 'future') {
+    ctx.fillStyle = '#0f102b';
+    ctx.fillRect(0, 0, 256, 512);
+    const neonColors = ['#06b6d4', '#ec4899', '#a855f7', '#38bdf8'];
+    for (let y = 16; y < 496; y += 28) {
+      for (let x = 16; x < 240; x += 28) {
+        if ((x + y) % 56 === 0 || Math.random() > 0.35) {
+          ctx.fillStyle = neonColors[(x + y) % neonColors.length];
+          ctx.fillRect(x, y, 18, 12);
+        }
+      }
+    }
+    ctx.fillStyle = '#22d3ee';
+    ctx.fillRect(0, 0, 8, 512);
+    ctx.fillRect(248, 0, 8, 512);
+  } else {
+    ctx.fillStyle = isNight ? '#111827' : '#475569';
+    ctx.fillRect(0, 0, 256, 512);
+    for (let y = 18; y < 496; y += 26) {
+      for (let x = 14; x < 242; x += 24) {
+        const lit = isNight ? Math.random() > 0.35 : Math.random() > 0.25;
+        ctx.fillStyle = lit
+          ? (isNight ? (Math.random() > 0.25 ? '#fef08a' : '#bae6fd') : '#93c5fd')
+          : (isNight ? '#1e293b' : '#334155');
+        ctx.fillRect(x, y, 15, 16);
+      }
+    }
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  buildingTexCache[key] = tex;
+  return tex;
+}
+
+function createGroundTexture(baseHex, accentHex, isGrid) {
+  const c = document.createElement('canvas');
+  c.width = 256; c.height = 256;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = baseHex;
+  ctx.fillRect(0, 0, 256, 256);
+
+  if (isGrid) {
+    ctx.strokeStyle = accentHex;
+    ctx.lineWidth = 2;
+    for (let i = 0; i <= 256; i += 32) {
+      ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, 256); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(256, i); ctx.stroke();
+    }
+  } else {
+    for (let i = 0; i < 1200; i++) {
+      ctx.fillStyle = accentHex;
+      ctx.globalAlpha = 0.14 + Math.random() * 0.16;
+      ctx.fillRect(Math.random() * 256, Math.random() * 256, 4 + Math.random() * 6, 4 + Math.random() * 6);
+    }
+    ctx.globalAlpha = 1;
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(32, 42);
+  return tex;
+}
+
+// 도시/미래 도시 인도(보도블록) 절차적 텍스처
+function createSidewalkTexture(isFuture, isNight) {
+  const c = document.createElement('canvas');
+  c.width = 256; c.height = 256;
+  const ctx = c.getContext('2d');
+
+  if (isFuture) {
+    ctx.fillStyle = '#181936';
+    ctx.fillRect(0, 0, 256, 256);
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.35)';
+    ctx.lineWidth = 2;
+    for (let y = 0; y <= 256; y += 32) {
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(256, y); ctx.stroke();
+    }
+    for (let x = 0; x <= 256; x += 32) {
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, 256); ctx.stroke();
+    }
+    ctx.fillStyle = 'rgba(34, 211, 238, 0.22)';
+    for (let y = 8; y < 256; y += 64) ctx.fillRect(10, y, 236, 4);
+  } else {
+    ctx.fillStyle = isNight ? '#334155' : '#94a3b8';
+    ctx.fillRect(0, 0, 256, 256);
+
+    // 보도블록 격자 + 엇갈린 벽돌 패턴
+    const tileH = 32, tileW = 32;
+    for (let row = 0; row < 8; row++) {
+      const offsetX = (row % 2) * 16;
+      for (let col = -1; col < 9; col++) {
+        const shade = ((row + col) % 3 === 0) ? 8 : ((row + col) % 2 === 0 ? -6 : 0);
+        const base = isNight ? 58 + shade : 158 + shade;
+        ctx.fillStyle = `rgb(${base}, ${base + 4}, ${base + 10})`;
+        ctx.fillRect(col * tileW + offsetX + 1, row * tileH + 1, tileW - 2, tileH - 2);
+      }
+    }
+    // 미세한 콘크리트 알갱이 질감
+    for (let i = 0; i < 650; i++) {
+      ctx.fillStyle = Math.random() > 0.5 ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.08)';
+      ctx.fillRect(Math.random() * 256, Math.random() * 256, 2, 2);
+    }
+  }
+
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(3, 24);
+  return tex;
+}
+
+function createRoadTexture(lanes, isTwoWay, isNeon, isRain) {
+  const c = document.createElement('canvas');
+  c.width = 512; c.height = 512;
+  const ctx = c.getContext('2d');
+
+  ctx.fillStyle = isNeon ? '#111827' : (isRain ? '#1e2430' : '#2c323d');
+  ctx.fillRect(0, 0, 512, 512);
+
+  for (let i = 0; i < 1400; i++) {
+    ctx.fillStyle = Math.random() > 0.5 ? 'rgba(255,255,255,0.035)' : 'rgba(0,0,0,0.06)';
+    ctx.fillRect(Math.random() * 512, Math.random() * 512, 3, 4);
+  }
+
+  if (isRain) {
+    for (let i = 0; i < 45; i++) {
+      ctx.fillStyle = 'rgba(125, 211, 252, 0.08)';
+      ctx.fillRect(40 + Math.random() * 432, Math.random() * 512, 4 + Math.random() * 14, 45 + Math.random() * 70);
+    }
+  }
+
+  const curbW = 22;
+  for (let y = 0; y < 512; y += 64) {
+    ctx.fillStyle = (y / 64) % 2 === 0 ? (isNeon ? '#06b6d4' : '#ef4444') : '#f8fafc';
+    ctx.fillRect(0, y, curbW, 64);
+    ctx.fillRect(512 - curbW, y, curbW, 64);
+  }
+
+  ctx.fillStyle = isNeon ? '#38bdf8' : '#e2e8f0';
+  ctx.fillRect(curbW + 4, 0, 6, 512);
+  ctx.fillRect(512 - curbW - 10, 0, 6, 512);
+
+  const usableW = 512 - (curbW + 10) * 2;
+  const laneW = usableW / lanes;
+  for (let i = 1; i < lanes; i++) {
+    const x = curbW + 10 + i * laneW;
+    if (isTwoWay && i === lanes / 2) {
+      ctx.fillStyle = '#facc15';
+      ctx.fillRect(x - 5, 0, 4, 512);
+      ctx.fillRect(x + 2, 0, 4, 512);
+    } else {
+      ctx.fillStyle = isNeon ? 'rgba(56,189,248,0.85)' : 'rgba(255,255,255,0.82)';
+      for (let y = 0; y < 512; y += 64) ctx.fillRect(x - 3, y + 10, 6, 36);
+    }
+  }
+
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(1, 24);
+  return tex;
+}
+
+function createGantrySignTexture(mapName, isFuture) {
+  const c = document.createElement('canvas');
+  c.width = 512; c.height = 128;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = isFuture ? '#0f172a' : '#065f46';
+  ctx.fillRect(0, 0, 512, 128);
+  ctx.strokeStyle = isFuture ? '#22d3ee' : '#f8fafc';
+  ctx.lineWidth = 8;
+  ctx.strokeRect(6, 6, 500, 116);
+  ctx.fillStyle = isFuture ? '#38bdf8' : '#ffffff';
+  ctx.font = 'bold 34px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(`HORIZON EXPRESS · ${mapName}`, 256, 58);
+  ctx.fillStyle = '#fde047';
+  ctx.font = 'bold 22px sans-serif';
+  ctx.fillText('▲ OVERDRIVE HIGHWAY ▲', 256, 98);
+  return new THREE.CanvasTexture(c);
+}
+
+/* ============================================================================
+   5. THREE.JS 정밀 3D 차량 빌더
+   ============================================================================ */
+function createVehicleMesh(vData, isAI = false) {
+  const g = new THREE.Group();
+  const bodyMat = new THREE.MeshStandardMaterial({ color: vData.color, metalness: 0.58, roughness: 0.22 });
+  const darkMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, metalness: 0.35, roughness: 0.65 });
+  const chromeMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.9, roughness: 0.14 });
+  const glassMat = new THREE.MeshStandardMaterial({ color: 0x090d16, metalness: 0.92, roughness: 0.08, transparent: true, opacity: 0.88 });
+  const tailMat = new THREE.MeshStandardMaterial({ color: 0xff1e1e, emissive: 0xff0000, emissiveIntensity: 0.95 });
+  const headMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xfef08a, emissiveIntensity: 1.1 });
+
+  g.userData.wheels = [];
+  g.userData.brakeLights = [];
+  g.userData.wings = null;
+  g.userData.stunRing = null;
+  g.userData.scratchMarks = null;
+  g.userData.catTail = null;
+  g.userData.infernoAura = null;
+  g.userData.isInferno = (vData.type === 'inferno');
+
+  if (vData.type === 'bike' || vData.type === 'moto') {
+    const isMoto = vData.type === 'moto';
+    const wRad = isMoto ? 0.39 : 0.36;
+    const wThick = isMoto ? 0.25 : 0.09;
+    const wheelGeo = new THREE.CylinderGeometry(wRad, wRad, wThick, 16);
+    wheelGeo.rotateZ(Math.PI / 2);
+
+    const wFront = new THREE.Mesh(wheelGeo, darkMat); wFront.position.set(0, wRad, -0.78); wFront.castShadow = true;
+    const wBack = new THREE.Mesh(wheelGeo, darkMat); wBack.position.set(0, wRad, 0.78); wBack.castShadow = true;
+    g.add(wFront, wBack); g.userData.wheels.push(wFront, wBack);
+
+    const frame = new THREE.Mesh(new THREE.BoxGeometry(isMoto ? 0.48 : 0.15, isMoto ? 0.5 : 0.22, 1.62), bodyMat);
+    frame.position.set(0, isMoto ? 0.64 : 0.56, 0); frame.castShadow = true; g.add(frame);
+
+    const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, isMoto ? 0.88 : 0.72, 8), chromeMat);
+    handle.rotation.z = Math.PI / 2; handle.position.set(0, isMoto ? 1.0 : 0.96, -0.6); g.add(handle);
+
+    const tail = new THREE.Mesh(new THREE.BoxGeometry(isMoto ? 0.24 : 0.12, 0.11, 0.08), tailMat.clone());
+    tail.position.set(0, isMoto ? 0.78 : 0.65, 0.84); g.add(tail); g.userData.brakeLights.push(tail);
+
+    const riderSuit = new THREE.MeshStandardMaterial({ color: isMoto ? 0x1e293b : 0x334155, roughness: 0.55 });
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.58, 0.28), riderSuit);
+    torso.position.set(0, 1.12, 0.12); torso.rotation.x = -0.35; torso.castShadow = true; g.add(torso);
+    const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.22, 14, 14), bodyMat);
+    helmet.position.set(0, 1.54, -0.02); helmet.castShadow = true; g.add(helmet);
+  } else {
+    const isSuper = ['super', 'racer', 's_tier', 'inferno', 'cat'].includes(vData.type);
+    const isMuscle = vData.type === 'muscle';
+    const isInferno = vData.type === 'inferno';
+    const isCat = vData.type === 'cat';
+
+    const w = isInferno ? 2.26 : (isSuper ? 2.16 : 1.98);
+    const h = isInferno ? 0.48 : (isSuper ? 0.52 : 0.66);
+    const l = isInferno ? 4.6 : (isSuper ? 4.4 : 4.05);
+
+    const chassisMat = isInferno
+      ? new THREE.MeshStandardMaterial({ color: 0xdc2626, emissive: 0x450a0a, emissiveIntensity: 0.75, metalness: 0.74, roughness: 0.18 })
+      : bodyMat;
+
+    const chassis = new THREE.Mesh(new THREE.BoxGeometry(w, h, l), chassisMat);
+    chassis.position.set(0, 0.52, 0);
+    chassis.castShadow = true;
+    chassis.receiveShadow = true;
+    g.add(chassis);
+
+    if (isMuscle) {
+      const scoop = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.24, 0.95), chromeMat);
+      scoop.position.set(0, 0.92, -0.95);
+      g.add(scoop);
+    }
+
+    const cab = new THREE.Mesh(new THREE.BoxGeometry(w * 0.78, isSuper ? 0.4 : 0.54, l * 0.46), glassMat);
+    cab.position.set(0, 0.52 + h / 2 + (isSuper ? 0.17 : 0.23), 0.16);
+    cab.castShadow = true;
+    g.add(cab);
+
+    const roof = new THREE.Mesh(new THREE.BoxGeometry(w * 0.74, 0.07, l * 0.38), chassisMat);
+    roof.position.set(0, cab.position.y + (isSuper ? 0.2 : 0.26), 0.16);
+    g.add(roof);
+
+    const wheelGeo = new THREE.CylinderGeometry(0.39, 0.39, 0.32, 16); wheelGeo.rotateZ(Math.PI / 2);
+    const rimGeo = new THREE.CylinderGeometry(0.22, 0.22, 0.34, 10); rimGeo.rotateZ(Math.PI / 2);
+    const rimMat = isInferno
+      ? new THREE.MeshStandardMaterial({ color: 0xff3b00, emissive: 0xdc2626, emissiveIntensity: 1.2, metalness: 0.8 })
+      : chromeMat;
+
+    [[-w / 2 - 0.02, 0.39, -l * 0.31], [w / 2 + 0.02, 0.39, -l * 0.31], [-w / 2 - 0.02, 0.39, l * 0.31], [w / 2 + 0.02, 0.39, l * 0.31]].forEach(p => {
+      const wg = new THREE.Group();
+      wg.position.set(p[0], p[1], p[2]);
+      wg.add(new THREE.Mesh(wheelGeo, darkMat), new THREE.Mesh(rimGeo, rimMat));
+      g.add(wg);
+      g.userData.wheels.push(wg);
+    });
+
+    [-w * 0.34, w * 0.34].forEach(x => {
+      const tl = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.14, 0.08), tailMat.clone());
+      tl.position.set(x, 0.62, l / 2 + 0.02);
+      g.add(tl);
+      g.userData.brakeLights.push(tl);
+      if (!isAI) {
+        const tg = createGlowSprite('#ff2a2a', 1.35);
+        tg.position.set(x, 0.62, l / 2 + 0.12);
+        g.add(tg);
+      }
+      if (!isCat) {
+        const hl = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.14, 0.08), headMat);
+        hl.position.set(x, 0.56, -l / 2 - 0.02);
+        g.add(hl);
+      }
+    });
+
+    if (!isInferno) {
+      [-0.48, 0.48].forEach(x => {
+        const ex = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.085, 0.28, 10), chromeMat);
+        ex.rotation.x = Math.PI / 2;
+        ex.position.set(x, 0.32, l / 2 + 0.08);
+        g.add(ex);
+      });
+    }
+
+    if ((isSuper && !isCat && !isInferno) || vData.type === 'racer') {
+      const wingW = vData.type === 'racer' ? w * 1.15 : w * 1.04;
+      const wing = new THREE.Mesh(new THREE.BoxGeometry(wingW, 0.08, 0.4), darkMat);
+      wing.position.set(0, 1.02, l / 2 - 0.2);
+      g.add(wing);
+      [-w * 0.36, w * 0.36].forEach(x => {
+        const strut = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.28, 0.22), darkMat);
+        strut.position.set(x, 0.86, l / 2 - 0.2);
+        g.add(strut);
+      });
+    }
+
+    if (vData.type === 's_tier') {
+      const neonMat = new THREE.MeshStandardMaterial({ color: vData.color, emissive: vData.color, emissiveIntensity: 1.6 });
+      const strip = new THREE.Mesh(new THREE.BoxGeometry(w + 0.06, 0.08, l * 0.92), neonMat);
+      strip.position.set(0, 0.28, 0);
+      g.add(strip);
+
+      if (vData.skill === 'sky') {
+        const wings = new THREE.Group();
+        const wMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, emissive: 0x0284c7, emissiveIntensity: 1.3, transparent: true, opacity: 0.86 });
+        const wl = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.06, 1.25), wMat); wl.position.set(-1.65, 0.65, 0.2);
+        const wr = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.06, 1.25), wMat); wr.position.set(1.65, 0.65, 0.2);
+        wings.add(wl, wr);
+        wings.scale.set(0.01, 1, 1);
+        g.add(wings);
+        g.userData.wings = wings;
+      }
+    }
+
+    if (isInferno) {
+      const carbonMat = new THREE.MeshStandardMaterial({ color: 0x09090b, metalness: 0.45, roughness: 0.38 });
+      const fireNeonMat = new THREE.MeshStandardMaterial({ color: 0xff4500, emissive: 0xff2200, emissiveIntensity: 2.2 });
+
+      const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.05, l * 0.98), carbonMat);
+      stripe.position.set(0, 0.77, 0);
+      g.add(stripe);
+      const splitter = new THREE.Mesh(new THREE.BoxGeometry(w + 0.14, 0.08, 0.55), carbonMat);
+      splitter.position.set(0, 0.24, -l / 2 - 0.12);
+      g.add(splitter);
+
+      [-w / 2 - 0.04, w / 2 + 0.04].forEach(sx => {
+        const vent = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.22, l * 0.64), carbonMat);
+        vent.position.set(sx, 0.5, 0.18);
+        g.add(vent);
+        const neonLine = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.08, l * 0.58), fireNeonMat);
+        neonLine.position.set(sx * 1.03, 0.42, 0.18);
+        g.add(neonLine);
+      });
+
+      const wing1 = new THREE.Mesh(new THREE.BoxGeometry(w * 1.18, 0.08, 0.44), carbonMat);
+      wing1.position.set(0, 1.18, l / 2 - 0.18);
+      g.add(wing1);
+      [-w * 0.59, w * 0.59].forEach(ex => {
+        const plate = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.36, 0.52), fireNeonMat);
+        plate.position.set(ex, 1.1, l / 2 - 0.18);
+        g.add(plate);
+      });
+      [-0.65, 0.65].forEach(sx => {
+        const strut = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.42, 0.25), carbonMat);
+        strut.position.set(sx, 0.94, l / 2 - 0.18);
+        g.add(strut);
+      });
+
+      [-0.66, 0, 0.66].forEach(exX => {
+        const jet = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.22, 0.52, 12), carbonMat);
+        jet.rotation.x = Math.PI / 2;
+        jet.position.set(exX, 0.42, l / 2 + 0.18);
+        g.add(jet);
+        const core = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.08, 10), fireNeonMat);
+        core.rotation.x = Math.PI / 2;
+        core.position.set(exX, 0.42, l / 2 + 0.43);
+        g.add(core);
+        const glow = createGlowSprite('#ff4500', 1.85);
+        glow.position.set(exX, 0.42, l / 2 + 0.48);
+        g.add(glow);
+      });
+
+      const auraGroup = new THREE.Group();
+      const outerFire = new THREE.Mesh(
+        new THREE.ConeGeometry(2.05, 6.2, 14, 1, true),
+        new THREE.MeshBasicMaterial({ color: 0xff3b00, transparent: true, opacity: 0.46, side: THREE.DoubleSide })
+      );
+      outerFire.rotation.x = -Math.PI / 2;
+      outerFire.position.set(0, 0.72, 0.35);
+
+      const blackFlame = new THREE.Mesh(
+        new THREE.ConeGeometry(1.48, 5.4, 12, 1, true),
+        new THREE.MeshBasicMaterial({ color: 0x09090b, transparent: true, opacity: 0.58, side: THREE.DoubleSide })
+      );
+      blackFlame.rotation.x = -Math.PI / 2;
+      blackFlame.position.set(0, 0.75, 0.85);
+
+      auraGroup.add(outerFire, blackFlame);
+      auraGroup.visible = false;
+      g.add(auraGroup);
+      g.userData.infernoAura = auraGroup;
+    }
+
+    if (isCat) {
+      const orangeFur = new THREE.MeshStandardMaterial({ color: 0xfb923c, roughness: 0.42, metalness: 0.12 });
+      const tabbyStripe = new THREE.MeshStandardMaterial({ color: 0xc2410c, roughness: 0.5 });
+      const creamFur = new THREE.MeshStandardMaterial({ color: 0xfff7ed, roughness: 0.45 });
+      const pinkMat = new THREE.MeshStandardMaterial({ color: 0xf472b6, emissive: 0xbe185d, emissiveIntensity: 0.38 });
+      const eyeYellow = new THREE.MeshStandardMaterial({ color: 0xfef08a, emissive: 0xfacc15, emissiveIntensity: 1.6 });
+      const blackMat = new THREE.MeshBasicMaterial({ color: 0x09090b });
+
+      const creamTrim = new THREE.Mesh(new THREE.BoxGeometry(w + 0.04, 0.18, l * 0.96), creamFur);
+      creamTrim.position.set(0, 0.34, 0);
+      g.add(creamTrim);
+      [-0.55, 0.15, 0.85].forEach(sz => {
+        const stripe = new THREE.Mesh(new THREE.BoxGeometry(w * 0.72, 0.05, 0.22), tabbyStripe);
+        stripe.position.set(0, cab.position.y + 0.25, sz * 0.55);
+        g.add(stripe);
+      });
+
+      const faceGroup = new THREE.Group();
+      faceGroup.position.set(0, 0.78, -l / 2 - 0.12);
+
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.96, 20, 16), orangeFur);
+      head.scale.set(1.22, 0.86, 0.72);
+      faceGroup.add(head);
+
+      [-0.22, 0, 0.22].forEach(fx => {
+        const fh = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.26, 0.1), tabbyStripe);
+        fh.position.set(fx, 0.52, -0.58);
+        faceGroup.add(fh);
+      });
+
+      [-0.25, 0.25].forEach(mx => {
+        const cheek = new THREE.Mesh(new THREE.SphereGeometry(0.28, 12, 10), creamFur);
+        cheek.position.set(mx, -0.18, -0.56);
+        faceGroup.add(cheek);
+      });
+
+      [-0.44, 0.44].forEach(ex => {
+        const eye = new THREE.Mesh(new THREE.SphereGeometry(0.2, 14, 14), eyeYellow);
+        eye.position.set(ex, 0.15, -0.56);
+        faceGroup.add(eye);
+        const pupil = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.28, 0.08), blackMat);
+        pupil.position.set(ex, 0.15, -0.73);
+        faceGroup.add(pupil);
+      });
+
+      const nose = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.15, 3), pinkMat);
+      nose.rotation.x = Math.PI;
+      nose.position.set(0, -0.05, -0.75);
+      faceGroup.add(nose);
+      const mouthL = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.045, 0.05), blackMat);
+      mouthL.position.set(-0.1, -0.24, -0.76); mouthL.rotation.z = 0.28;
+      const mouthR = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.045, 0.05), blackMat);
+      mouthR.position.set(0.1, -0.24, -0.76); mouthR.rotation.z = -0.28;
+      faceGroup.add(mouthL, mouthR);
+
+      [-1, 1].forEach(side => {
+        [-0.16, 0, 0.16].forEach((ang, idx) => {
+          const whisker = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.92, 6), blackMat);
+          whisker.rotation.z = Math.PI / 2 + side * ang;
+          whisker.position.set(side * 0.92, -0.12 + (idx - 1) * 0.12, -0.5);
+          faceGroup.add(whisker);
+        });
+      });
+
+      g.add(faceGroup);
+
+      [-0.68, 0.68].forEach(ex => {
+        const earOuter = new THREE.Mesh(new THREE.ConeGeometry(0.36, 0.78, 4), orangeFur);
+        earOuter.position.set(ex, 1.48, -0.58);
+        earOuter.rotation.z = ex < 0 ? 0.22 : -0.22;
+        earOuter.rotation.y = Math.PI / 4;
+        g.add(earOuter);
+
+        const earInner = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.5, 4), pinkMat);
+        earInner.position.set(ex * 0.99, 1.44, -0.7);
+        earInner.rotation.z = ex < 0 ? 0.22 : -0.22;
+        earInner.rotation.y = Math.PI / 4;
+        g.add(earInner);
+      });
+
+      const tailGroup = new THREE.Group();
+      tailGroup.position.set(0, 0.76, l / 2 + 0.02);
+      const seg1 = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.15, 0.75, 10), orangeFur);
+      seg1.rotation.x = 0.62;
+      seg1.position.set(0, 0.22, 0.24);
+      const seg2 = new THREE.Mesh(new THREE.CylinderGeometry(0.095, 0.11, 0.78, 10), tabbyStripe);
+      seg2.rotation.x = 0.18;
+      seg2.position.set(0, 0.76, 0.44);
+      const tip = new THREE.Mesh(new THREE.SphereGeometry(0.13, 10, 10), creamFur);
+      tip.position.set(0, 1.15, 0.5);
+      tailGroup.add(seg1, seg2, tip);
+      g.add(tailGroup);
+      g.userData.catTail = tailGroup;
+    }
+  }
+
+  if (isAI) {
+    const stunRing = new THREE.Mesh(
+      new THREE.TorusGeometry(1.15, 0.1, 8, 22),
+      new THREE.MeshBasicMaterial({ color: 0xfacc15 })
+    );
+    stunRing.rotation.x = Math.PI / 2;
+    stunRing.position.set(0, 1.95, 0);
+    stunRing.visible = false;
+    g.add(stunRing);
+    g.userData.stunRing = stunRing;
+
+    const scratchGroup = new THREE.Group();
+    const scRed = new THREE.MeshBasicMaterial({ color: 0xff1e4d });
+    const scCore = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    [-0.42, 0, 0.42].forEach(off => {
+      const bar = new THREE.Mesh(new THREE.BoxGeometry(0.11, 1.7, 0.12), scRed);
+      bar.position.set(off, 1.48, 0.1);
+      bar.rotation.z = -0.48;
+      const core = new THREE.Mesh(new THREE.BoxGeometry(0.045, 1.5, 0.15), scCore);
+      core.position.set(off, 1.48, 0.1);
+      core.rotation.z = -0.48;
+      scratchGroup.add(bar, core);
+    });
+    scratchGroup.visible = false;
+    g.add(scratchGroup);
+    g.userData.scratchMarks = scratchGroup;
+  }
+
+  return g;
+}
+
+/* ============================================================================
+   6. 고퀄리티 3D 환경 (도시/미래도시 인도·경계석 포함)
+   ============================================================================ */
+function clearGroup(grp) {
+  if (!grp) return;
+  while (grp.children.length) grp.remove(grp.children[0]);
+}
+
+function buildWorldEnvironment(mapId, time, season, weather, lanes, isTwoWay) {
+  if (skyDome) scene.remove(skyDome);
+  if (roadMesh) scene.remove(roadMesh);
+  if (groundMesh) scene.remove(groundMesh);
+  if (weatherPoints) { scene.remove(weatherPoints); weatherPoints = null; }
+  clearGroup(sidewalkGroup);
+  sidewalkTex = null;
+  clearGroup(celestialGroup);
+  clearGroup(horizonRing);
+  clearGroup(canyonGroup);
+  clearGroup(propGroup);
+  clearGroup(cloudGroup);
+  props = [];
+  clouds = [];
+
+  const isNight = time === 'night' || mapId === 'space' || mapId === 'undersea' || mapId === 'future';
+  const isNeon = mapId === 'future' || mapId === 'space';
+  const isRain = weather === 'rain';
+  const roadW = lanes * 3.4;
+
+  let skyTop = '#0284c7', skyMid = '#38bdf8', skyBot = '#bae6fd', fogHex = 0x7dd3fc;
+  if (mapId === 'space') {
+    skyTop = '#02020a'; skyMid = '#0f0c29'; skyBot = '#1e1b4b'; fogHex = 0x0b0b22;
+  } else if (mapId === 'undersea') {
+    skyTop = '#022c22'; skyMid = '#0f4c5c'; skyBot = '#115e59'; fogHex = 0x0d4f52;
+  } else if (mapId === 'future') {
+    skyTop = '#090418'; skyMid = '#1e1b4b'; skyBot = '#4c1d95'; fogHex = 0x1e1145;
+  } else if (isNight) {
+    skyTop = '#030712'; skyMid = '#0f172a'; skyBot = '#1e293b'; fogHex = 0x0f172a;
+  } else if (season === 'autumn') {
+    skyTop = '#1d4ed8'; skyMid = '#f97316'; skyBot = '#fde68a'; fogHex = 0xfdba74;
+  } else if (weather === 'fog') {
+    skyTop = '#64748b'; skyMid = '#94a3b8'; skyBot = '#cbd5e1'; fogHex = 0x94a3b8;
+  }
+
+  const skyTex = createSkyTexture(skyTop, skyMid, skyBot, isNight || mapId === 'space');
+  skyDome = new THREE.Mesh(
+    new THREE.SphereGeometry(320, 24, 16),
+    new THREE.MeshBasicMaterial({ map: skyTex, side: THREE.BackSide, fog: false })
+  );
+  scene.add(skyDome);
+
+  scene.background = new THREE.Color(fogHex);
+  const fogDensity = weather === 'fog' ? 0.0155 : (mapId === 'space' ? 0.0025 : 0.0052);
+  scene.fog = new THREE.FogExp2(fogHex, fogDensity);
+
+  ambLight.intensity = isNight ? 0.45 : 0.72;
+  dirLight.intensity = isNight ? 0.6 : 1.15;
+  dirLight.color.setHex(isNight ? 0x93c5fd : 0xfffbeb);
+
+  if (mapId === 'space') {
+    const planet = new THREE.Mesh(
+      new THREE.SphereGeometry(26, 24, 20),
+      new THREE.MeshStandardMaterial({ color: 0x6366f1, emissive: 0x312e81, emissiveIntensity: 0.6, roughness: 0.5 })
+    );
+    planet.position.set(55, 65, -210);
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(40, 2.2, 8, 48),
+      new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.65 })
+    );
+    ring.rotation.x = Math.PI * 0.38;
+    ring.rotation.y = 0.25;
+    planet.add(ring);
+    celestialGroup.add(planet);
+  } else if (mapId !== 'undersea') {
+    const sunCol = isNight ? 0xe2e8f0 : 0xfef08a;
+    const sunMesh = new THREE.Mesh(
+      new THREE.SphereGeometry(11, 18, 16),
+      new THREE.MeshBasicMaterial({ color: sunCol, fog: false })
+    );
+    sunMesh.position.set(-45, 72, -230);
+    const sunGlow = createGlowSprite(isNight ? '#93c5fd' : '#fde047', 65);
+    sunGlow.position.copy(sunMesh.position);
+    celestialGroup.add(sunMesh, sunGlow);
+
+    const cloudMat = new THREE.MeshLambertMaterial({ color: isNight ? 0x334155 : 0xffffff, transparent: true, opacity: 0.85 });
+    for (let i = 0; i < 14; i++) {
+      const cg = new THREE.Group();
+      for (let j = 0; j < 3; j++) {
+        const puff = new THREE.Mesh(new THREE.SphereGeometry(4 + Math.random() * 4, 8, 8), cloudMat);
+        puff.position.set((j - 1) * 4.5, Math.random() * 1.8, Math.random() * 2);
+        puff.scale.set(1.4, 0.7, 1.0);
+        cg.add(puff);
+      }
+      cg.position.set((Math.random() - 0.5) * 240, 38 + Math.random() * 25, -80 - Math.random() * 160);
+      cloudGroup.add(cg);
+      clouds.push(cg);
+    }
+  }
+
+  const farMat = new THREE.MeshBasicMaterial({
+    color: mapId === 'future' ? 0x1e1b4b : (isNight ? 0x0b1224 : 0x334155),
+    transparent: true,
+    opacity: 0.85
+  });
+  for (let i = 0; i < 28; i++) {
+    const ang = (i / 28) * Math.PI * 2;
+    const rad = 235;
+    const isCityStyle = mapId === 'city' || mapId === 'future';
+    const mesh = isCityStyle
+      ? new THREE.Mesh(new THREE.BoxGeometry(16 + (i % 4) * 5, 24 + (i % 5) * 14, 14), farMat)
+      : new THREE.Mesh(new THREE.ConeGeometry(28 + (i % 3) * 10, 34 + (i % 4) * 16, 5), farMat);
+    mesh.position.set(Math.sin(ang) * rad, isCityStyle ? 12 : 16, Math.cos(ang) * rad);
+    mesh.lookAt(0, 12, 0);
+    horizonRing.add(mesh);
+  }
+
+  let gBase = '#334155', gAcc = '#475569';
+  if (mapId === 'space') { gBase = '#050514'; gAcc = '#312e81'; }
+  else if (mapId === 'future') { gBase = '#0e0722'; gAcc = '#06b6d4'; }
+  else if (mapId === 'undersea') { gBase = '#0b3b3c'; gAcc = '#14b8a6'; }
+  else if (mapId === 'city') {
+    gBase = isNight ? '#1e293b' : '#475569';
+    gAcc = isNight ? '#334155' : '#64748b';
+  } else {
+    if (season === 'spring') { gBase = isNight ? '#122b1e' : '#2e7d32'; gAcc = '#4ade80'; }
+    if (season === 'summer') { gBase = isNight ? '#0e2416' : '#15803d'; gAcc = '#22c55e'; }
+    if (season === 'autumn') { gBase = isNight ? '#331d10' : '#b45309'; gAcc = '#f59e0b'; }
+    if (season === 'winter') { gBase = isNight ? '#334155' : '#e2e8f0'; gAcc = '#ffffff'; }
+  }
+  groundTex = createGroundTexture(gBase, gAcc, isNeon);
+  groundMesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(520, 620),
+    new THREE.MeshStandardMaterial({ map: groundTex, roughness: 0.92 })
+  );
+  groundMesh.rotation.x = -Math.PI / 2;
+  groundMesh.position.set(0, -0.06, -210);
+  groundMesh.receiveShadow = true;
+  scene.add(groundMesh);
+
+  if (mapId === 'mountain' || mapId === 'range') {
+    const canyonMat = new THREE.MeshStandardMaterial({
+      color: season === 'winter' ? 0xcbd5e1 : (season === 'autumn' ? 0x78350f : 0x3f4f44),
+      roughness: 0.92,
+      flatShading: true
+    });
+    [-1, 1].forEach(side => {
+      for (let i = 0; i < 16; i++) {
+        const ridge = new THREE.Mesh(new THREE.ConeGeometry(18 + (i % 3) * 7, 26 + (i % 4) * 11, 5), canyonMat);
+        ridge.position.set(side * (roadW / 2 + 26 + (i % 2) * 8), 11, -i * 28);
+        canyonGroup.add(ridge);
+      }
+    });
+  }
+
+  roadTex = createRoadTexture(lanes, isTwoWay, isNeon, isRain);
+  roadMesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(roadW, 540),
+    new THREE.MeshStandardMaterial({
+      map: roadTex,
+      roughness: isRain ? 0.16 : 0.62,
+      metalness: isRain ? 0.52 : 0.12
+    })
+  );
+  roadMesh.rotation.x = -Math.PI / 2;
+  roadMesh.position.set(0, 0, -210);
+  roadMesh.receiveShadow = true;
+  scene.add(roadMesh);
+
+  // 도시 & 미래 도시 전용 3D 인도(보도블록) + 입체 경계석 배치
+  if (mapId === 'city' || mapId === 'future') {
+    const isFutureMap = mapId === 'future';
+    sidewalkTex = createSidewalkTexture(isFutureMap, isNight);
+    const swMat = new THREE.MeshStandardMaterial({
+      map: sidewalkTex,
+      roughness: isRain ? 0.24 : 0.82,
+      metalness: isRain ? 0.35 : 0.08
+    });
+    const curbMat = new THREE.MeshStandardMaterial({
+      color: isFutureMap ? 0x06b6d4 : (isNight ? 0x64748b : 0xcbd5e1),
+      emissive: isFutureMap ? 0x0891b2 : 0x000000,
+      emissiveIntensity: isFutureMap ? 0.7 : 0,
+      roughness: 0.65
+    });
+
+    const swWidth = 24;
+    [-1, 1].forEach(side => {
+      // 인도 상판 (도로보다 살짝 높게 배치하여 건물 밑바닥과 자연스럽게 밀착)
+      const swPlane = new THREE.Mesh(new THREE.PlaneGeometry(swWidth, 540), swMat);
+      swPlane.rotation.x = -Math.PI / 2;
+      swPlane.position.set(side * (roadW / 2 + swWidth / 2 + 0.18), 0.16, -210);
+      swPlane.receiveShadow = true;
+      sidewalkGroup.add(swPlane);
+
+      // 도로와 인도 사이 입체 경계석(턱)
+      const curbBox = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.22, 540), curbMat);
+      curbBox.position.set(side * (roadW / 2 + 0.18), 0.08, -210);
+      curbBox.receiveShadow = true;
+      sidewalkGroup.add(curbBox);
+    });
+  }
+
+  const railMat = new THREE.MeshStandardMaterial({ color: 0xcbd5e1, metalness: 0.8, roughness: 0.25 });
+  const postMat = new THREE.MeshStandardMaterial({ color: 0x475569, metalness: 0.6 });
+  const reflMat = new THREE.MeshBasicMaterial({ color: isNeon ? 0x22d3ee : 0xfacc15 });
+  const treeLeafCol = season === 'autumn' ? 0xd97706 : (season === 'winter' ? 0xf1f5f9 : (season === 'spring' ? 0xf472b6 : 0x16a34a));
+  const neonCols = [0x06b6d4, 0xec4899, 0xa855f7, 0x38bdf8];
+  const mapObj = MAPS.find(m => m.id === mapId) || MAPS[0];
+  const signTex = createGantrySignTexture(mapObj.name, isNeon);
+
+  for (let i = 0; i < 36; i++) {
+    const z = -i * 12;
+
+    if (i % 6 === 2) {
+      const gate = new THREE.Group();
+      if (mapId === 'undersea') {
+        const arch = new THREE.Mesh(
+          new THREE.TorusGeometry(roadW / 2 + 2.6, 0.5, 8, 24, Math.PI),
+          new THREE.MeshStandardMaterial({ color: 0x14b8a6, emissive: 0x0d9488, emissiveIntensity: 0.9 })
+        );
+        gate.add(arch);
+      } else if (mapId === 'space') {
+        const ring = new THREE.Mesh(
+          new THREE.TorusGeometry(roadW / 2 + 4.2, 0.28, 8, 28),
+          new THREE.MeshStandardMaterial({ color: neonCols[i % 4], emissive: neonCols[i % 4], emissiveIntensity: 1.5 })
+        );
+        ring.position.y = 4;
+        gate.add(ring);
+      } else {
+        const pGeo = new THREE.CylinderGeometry(0.24, 0.28, 8.2, 8);
+        const pL = new THREE.Mesh(pGeo, postMat); pL.position.set(-roadW / 2 - 1.1, 4.1, 0);
+        const pR = new THREE.Mesh(pGeo, postMat); pR.position.set(roadW / 2 + 1.1, 4.1, 0);
+        const beam = new THREE.Mesh(new THREE.BoxGeometry(roadW + 2.8, 0.4, 0.4), postMat);
+        beam.position.set(0, 7.6, 0);
+        const board = new THREE.Mesh(
+          new THREE.BoxGeometry(Math.min(13, roadW * 0.9), 2.3, 0.24),
+          new THREE.MeshBasicMaterial({ map: signTex })
+        );
+        board.position.set(0, 7.2, 0.25);
+        gate.add(pL, pR, beam, board);
+      }
+      gate.position.set(0, 0, z);
+      propGroup.add(gate);
+      props.push(gate);
+    }
+
+    [-1, 1].forEach(side => {
+      const chunk = new THREE.Group();
+      chunk.position.set(0, 0, z);
+
+      if (mapId !== 'space') {
+        const baseH = (mapId === 'city' || mapId === 'future') ? 0.16 : 0;
+        const rail = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.28, 12.1), railMat);
+        rail.position.set(side * (roadW / 2 + 0.55), 0.72 + baseH, 0);
+        const post = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.85, 0.14), postMat);
+        post.position.set(side * (roadW / 2 + 0.62), 0.42 + baseH, 0);
+        const refl = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.16, 0.18), reflMat);
+        refl.position.set(side * (roadW / 2 + 0.52), 0.92 + baseH, 0);
+        chunk.add(rail, post, refl);
+      }
+
+      if (i % 3 === 0 && mapId !== 'space' && mapId !== 'undersea') {
+        const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.13, 6.4, 6), postMat);
+        pole.position.set(side * (roadW / 2 + 1.25), 3.3, 0);
+        const arm = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.12, 0.12), postMat);
+        arm.position.set(side * (roadW / 2 + 0.65), 6.4, 0);
+        const lamp = new THREE.Mesh(
+          new THREE.BoxGeometry(0.6, 0.18, 0.3),
+          new THREE.MeshBasicMaterial({ color: isNeon ? 0x38bdf8 : 0xfef08a })
+        );
+        lamp.position.set(side * (roadW / 2 + 0.1), 6.32, 0);
+        chunk.add(pole, arm, lamp);
+
+        if (isNight || isNeon) {
+          const glow = createGlowSprite(isNeon ? '#22d3ee' : '#fde047', 4.2);
+          glow.position.set(side * (roadW / 2 + 0.1), 6.2, 0);
+          chunk.add(glow);
+        }
+      }
+
+      if (mapId === 'city' || mapId === 'future') {
+        const bh = 11 + ((i * 7 + (side > 0 ? 3 : 0)) % 22);
+        const bw = 5.5 + (i % 3) * 1.8;
+        const bTex = getBuildingTexture(mapId === 'future' ? 'future' : 'city', isNight);
+        const bMat = new THREE.MeshStandardMaterial({ map: bTex, roughness: 0.42, metalness: 0.35 });
+        const bldg = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, 6.5), bMat);
+        bldg.position.set(side * (roadW / 2 + 5.8 + (i % 3) * 2.2), bh / 2 + 0.16, 0);
+        chunk.add(bldg);
+
+        if (bh > 22 && (isNight || mapId === 'future')) {
+          const beacon = createGlowSprite('#ef4444', 2.4);
+          beacon.position.set(bldg.position.x, bh + 0.96, 0);
+          chunk.add(beacon);
+        }
+      } else if (mapId === 'mountain' || mapId === 'range' || mapId === 'country') {
+        const tx = side * (roadW / 2 + 3.4 + (i % 4) * 2.1);
+        const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.35, 2.2, 6), new THREE.MeshStandardMaterial({ color: 0x78350f }));
+        trunk.position.set(tx, 1.1, 0);
+        const c1 = new THREE.Mesh(new THREE.ConeGeometry(1.75, 3.8, 7), new THREE.MeshStandardMaterial({ color: treeLeafCol, roughness: 0.85 }));
+        c1.position.set(tx, 3.5, 0);
+        const c2 = new THREE.Mesh(new THREE.ConeGeometry(1.25, 2.8, 7), new THREE.MeshStandardMaterial({ color: treeLeafCol, roughness: 0.85 }));
+        c2.position.set(tx, 5.2, 0);
+        chunk.add(trunk, c1, c2);
+      } else if (mapId === 'undersea') {
+        const coral = new THREE.Mesh(
+          new THREE.DodecahedronGeometry(1.5),
+          new THREE.MeshStandardMaterial({ color: i % 2 ? 0xf43f5e : 0x2dd4bf, emissive: i % 2 ? 0x881337 : 0x115e59, emissiveIntensity: 0.5 })
+        );
+        coral.position.set(side * (roadW / 2 + 3.6), 1.1, 0);
+        chunk.add(coral);
+      } else if (mapId === 'space') {
+        const rock = new THREE.Mesh(
+          new THREE.OctahedronGeometry(1.8 + (i % 3) * 0.9),
+          new THREE.MeshStandardMaterial({ color: 0x818cf8, emissive: 0x312e81, wireframe: i % 2 === 0 })
+        );
+        rock.position.set(side * (roadW / 2 + 7 + (i % 4) * 3.2), 4 + (i % 5) * 2.2, 0);
+        chunk.add(rock);
+      }
+
+      propGroup.add(chunk);
+      props.push(chunk);
+    });
+  }
+
+  if (weather === 'rain' || weather === 'snow' || mapId === 'space') {
+    const count = mapId === 'space' ? 500 : 380;
+    const geo = new THREE.BufferGeometry();
+    const pos = new Float32Array(count * 3);
+    for (let i = 0; i < count; i++) {
+      pos[i * 3] = (Math.random() - 0.5) * 75;
+      pos[i * 3 + 1] = Math.random() * 35;
+      pos[i * 3 + 2] = -Math.random() * 145 + 20;
+    }
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    const mat = new THREE.PointsMaterial({
+      color: weather === 'rain' ? 0x93c5fd : 0xffffff,
+      size: weather === 'snow' ? 0.36 : (weather === 'rain' ? 0.24 : 0.44),
+      transparent: true,
+      opacity: 0.85
+    });
+    weatherPoints = new THREE.Points(geo, mat);
+    weatherPoints.userData.kind = mapId === 'space' ? 'space' : weather;
+    scene.add(weatherPoints);
+  }
+}
+
+/* ============================================================================
+   7. 홈 화면 3D 쇼케이스 & 히든 카 전용 VFX 생성기
+   ============================================================================ */
+function setupHomeScene() {
+  gamePhase = 'home';
+  clearGroup(aiGroup);
+  clearGroup(effectGroup);
+  aiCars = [];
+  activeEffects = [];
+  if (playerMesh) { scene.remove(playerMesh); playerMesh = null; }
+
+  buildWorldEnvironment('city', homeIsNight ? 'night' : 'day', 'spring', 'clear', 3, false);
+  buildShowcaseCar();
+}
+
+function buildShowcaseCar() {
+  clearGroup(showcaseGroup);
+  clearGroup(effectGroup);
+  activeEffects = [];
+  const v = VEHICLES.find(x => x.id === state.selectedCar) || VEHICLES[0];
+  const mesh = createVehicleMesh(v, false);
+  showcaseGroup.add(mesh);
+  updateHomeHUD();
+}
+
+function toggleHomeTime() {
+  playTone(520, 0.08, 'sine', 0.1);
+  homeIsNight = !homeIsNight;
+  if (gamePhase === 'home') setupHomeScene();
+}
+
+function spawnInfernoFlameParticle(baseX, baseY, baseZ, isOverdrive = false) {
+  const count = isOverdrive ? 3 : 1;
+  for (let i = 0; i < count; i++) {
+    const isBlackFlame = Math.random() < 0.3;
+    const hex = Math.random() > 0.45 ? '#ff3b00' : '#fb923c';
+    const mesh = isBlackFlame
+      ? new THREE.Mesh(
+          new THREE.SphereGeometry(isOverdrive ? 0.48 : 0.24, 6, 6),
+          new THREE.MeshBasicMaterial({ color: 0x09090b, transparent: true, opacity: 0.78 })
+        )
+      : createGlowSprite(hex, isOverdrive ? (2.2 + Math.random() * 1.4) : (1.2 + Math.random() * 0.7));
+
+    const sideEmit = Math.random() < 0.35;
+    const ox = sideEmit ? (Math.random() > 0.5 ? 1.18 : -1.18) : (Math.random() - 0.5) * 1.3;
+    const oz = sideEmit ? (Math.random() - 0.5) * 2.2 : (2.15 + Math.random() * 0.55);
+    mesh.position.set(baseX + ox, baseY + 0.35 + Math.random() * 0.35, baseZ + oz);
+    effectGroup.add(mesh);
+    activeEffects.push({
+      mesh,
+      type: 'inferno_flame',
+      life: isOverdrive ? 0.34 : 0.44,
+      vx: (Math.random() - 0.5) * (isOverdrive ? 5.2 : 1.4),
+      vy: 0.95 + Math.random() * 1.8,
+      vz: isOverdrive ? 28 : 5.2
+    });
+  }
+}
+
+function spawnCatClawSlashVFX(x, z, scale = 1.0) {
+  const slashGroup = new THREE.Group();
+  const redMat = new THREE.MeshBasicMaterial({ color: 0xff1e56, transparent: true, opacity: 0.96, side: THREE.DoubleSide });
+  const coreMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.98, side: THREE.DoubleSide });
+
+  [-0.6, 0, 0.6].forEach(off => {
+    const outer = new THREE.Mesh(new THREE.BoxGeometry(0.18 * scale, 3.0 * scale, 0.16 * scale), redMat.clone());
+    outer.position.set(off * scale, 0, 0);
+    outer.rotation.z = -0.5;
+    const inner = new THREE.Mesh(new THREE.BoxGeometry(0.075 * scale, 2.7 * scale, 0.2 * scale), coreMat.clone());
+    inner.position.set(off * scale, 0, 0);
+    inner.rotation.z = -0.5;
+    slashGroup.add(outer, inner);
+  });
+
+  slashGroup.position.set(x, 1.35, z);
+  effectGroup.add(slashGroup);
+  activeEffects.push({ mesh: slashGroup, type: 'cat_slash', life: 0.5 });
+}
+
+function spawnExplosionHitVFX(x, z, colorHex = 0xf97316) {
+  const boom = new THREE.Mesh(
+    new THREE.SphereGeometry(1.3, 12, 10),
+    new THREE.MeshBasicMaterial({ color: colorHex, transparent: true, opacity: 0.92 })
+  );
+  boom.position.set(x, 0.9, z);
+  effectGroup.add(boom);
+  activeEffects.push({ mesh: boom, type: 'boom', life: 0.4 });
+
+  for (let i = 0; i < 6; i++) {
+    const shard = new THREE.Mesh(
+      new THREE.BoxGeometry(0.26, 0.26, 0.26),
+      new THREE.MeshBasicMaterial({ color: i % 2 === 0 ? 0xfacc15 : colorHex, transparent: true, opacity: 0.95 })
+    );
+    shard.position.set(x, 0.8, z);
+    effectGroup.add(shard);
+    activeEffects.push({
+      mesh: shard,
+      type: 'debris',
+      life: 0.55,
+      vx: (Math.random() - 0.5) * 14,
+      vy: 5 + Math.random() * 8,
+      vz: (Math.random() - 0.5) * 10
+    });
+  }
+}
+
+function launchAIKnockback(ai, playerX) {
+  const pushDir = (ai.x >= playerX) ? 1 : -1;
+  ai.knockTimer = 0.72;
+  ai.stunTimer = 2.0;
+  ai.knockVx = pushDir * (9 + Math.random() * 4);
+  ai.knockVy = 9.5;
+  ai.knockY = 0;
+  ai.knockRoll = pushDir * 11;
+  ai.speed = 0;
+}
+
+/* ============================================================================
+   8. 레이싱 / 주행 코어 로직
+   ============================================================================ */
+let race = null;
+const input = { left: false, right: false, gas: false, brake: false, steerVal: 0 };
+
+function startRaceSession(cfg) {
+  initAudio();
+  closeAllModals();
+  document.getElementById('home-ui').classList.remove('active');
+  document.getElementById('race-ui').classList.add('active');
+  clearGroup(showcaseGroup);
+  clearGroup(effectGroup);
+  activeEffects = [];
+
+  const v = VEHICLES.find(x => x.id === state.selectedCar) || VEHICLES[0];
+  const effStats = getEffectiveStats(v);
+  const effMaxSpd = getEffectiveMaxSpeed(v);
+
+  buildWorldEnvironment(cfg.map, cfg.time, cfg.season, cfg.weather, cfg.lanes, cfg.isTwoWay);
+
+  if (playerMesh) scene.remove(playerMesh);
+  playerMesh = createVehicleMesh(v, false);
+  playerMesh.position.set(cfg.isTwoWay ? 1.7 : 0, 0, 0);
+  scene.add(playerMesh);
+
+  const skillBtn = document.getElementById('btn-skill');
+  const hasSkill = (v.tier === 'S' || v.tier === 'H');
+  skillBtn.style.display = hasSkill ? 'flex' : 'none';
+  document.getElementById('skill-icon').textContent =
+    v.skill === 'inferno' ? '🔥' : (v.skill === 'cat' ? '🐱' : '⚡');
+
+  race = {
+    cfg, v, effStats, effMaxSpd,
+    speed: 0,
+    dist: 0,
+    x: cfg.isTwoWay ? 1.7 : 0,
+    hp: 100,
+    maxHp: 85 + effStats[3] * 1.25,
+    elapsed: 0,
+    timeLeft: cfg.timeLimit || 0,
+    score: 0,
+    scoreTick: 0,
+    skillCD: 0,
+    skillTimer: 0,
+    chargeTimer: 0,
+    fireEnergy: 0,
+    fireChargeTick: 0,
+    infernoFlameTick: 0,
+    blastTick: 0,
+    pulseTrailTick: 0,
+    shake: 0,
+    finished: false,
+    roadHalfW: (cfg.lanes * 3.4) / 2 - 1.15
+  };
+  race.hp = race.maxHp;
+
+  clearGroup(aiGroup);
+  aiCars = [];
+
+  if (cfg.mode === 'level_race' || cfg.mode === 'competitive') {
+    const aiPool = VEHICLES.filter(c => {
+      if (c.tier === 'H') return false;
+      if (cfg.mode === 'competitive') {
+        if (state.trophies < 60) return c.tier === 'D' || c.tier === 'C';
+        if (state.trophies < 160) return c.tier === 'C' || c.tier === 'B';
+        if (state.trophies < 300) return c.tier === 'B' || c.tier === 'A';
+        return c.tier === 'A' || c.tier === 'S';
+      } else {
+        const lv = cfg.level;
+        if (lv <= 15) return c.tier === 'D';
+        if (lv <= 35) return c.tier === 'C';
+        if (lv <= 60) return c.tier === 'B';
+        if (lv <= 85) return c.tier === 'A';
+        return c.tier === 'A' || c.tier === 'S';
+      }
+    });
+    for (let i = 0; i < 7; i++) {
+      const av = aiPool[Math.floor(Math.random() * aiPool.length)] || VEHICLES[0];
+      const mesh = createVehicleMesh(av, true);
+      const laneIdx = i % cfg.lanes;
+      const lx = -((cfg.lanes - 1) * 3.4) / 2 + laneIdx * 3.4;
+      const startDist = 14 + i * 11;
+      mesh.position.set(lx, 0, -startDist);
+      aiGroup.add(mesh);
+      const mult = cfg.mode === 'competitive'
+        ? (0.88 + Math.min(0.3, state.trophies / 750))
+        : (0.82 + cfg.level * 0.004);
+      const baseSpd = av.maxSpd * mult * (0.9 + Math.random() * 0.16);
+      aiCars.push({
+        mesh, v: av, x: lx, targetX: lx, dist: startDist,
+        baseSpd, speed: baseSpd,
+        isRival: true, dir: 1, laneTimer: 1 + Math.random() * 2,
+        knockTimer: 0, stunTimer: 0, scratchTimer: 0,
+        knockVx: 0, knockVy: 0, knockY: 0, knockRoll: 0
+      });
+    }
+  } else {
+    const trafficPool = VEHICLES.filter(c => ['car', 'muscle', 'super', 'moto'].includes(c.type));
+    for (let i = 0; i < 14; i++) {
+      const av = trafficPool[Math.floor(Math.random() * trafficPool.length)];
+      const mesh = createVehicleMesh(av, true);
+      const laneIdx = Math.floor(Math.random() * cfg.lanes);
+      const lx = -((cfg.lanes - 1) * 3.4) / 2 + laneIdx * 3.4;
+      const oncoming = cfg.isTwoWay && laneIdx < cfg.lanes / 2;
+      if (oncoming) mesh.rotation.y = Math.PI;
+      const zOff = -(35 + i * 22);
+      mesh.position.set(lx, 0, zOff);
+      aiGroup.add(mesh);
+      const baseSpd = oncoming ? (75 + Math.random() * 60) : (50 + Math.random() * 55);
+      aiCars.push({
+        mesh, v: av, x: lx, dist: -zOff,
+        baseSpd, speed: baseSpd,
+        isRival: false, dir: oncoming ? -1 : 1,
+        knockTimer: 0, stunTimer: 0, scratchTimer: 0,
+        knockVx: 0, knockVy: 0, knockY: 0, knockRoll: 0
+      });
+    }
+  }
+
+  document.getElementById('race-mode-title').textContent = cfg.title;
+  document.getElementById('race-timer-wrap').style.display = cfg.timeLimit ? 'block' : 'none';
+  gamePhase = 'race';
+}
+
+function activateSkill() {
+  if (!race || (race.v.tier !== 'S' && race.v.tier !== 'H') || race.finished) return;
+  const sk = race.v.skill;
+
+  if (sk === 'inferno') {
+    if (race.fireEnergy < 100 || race.skillTimer > 0) {
+      if (race.skillTimer <= 0) showToast(`🔥 불 에너지 충전 중 (${race.fireEnergy}/100%)`);
+      return;
+    }
+    playInfernoSFX();
+    race.fireEnergy = 0;
+    race.fireChargeTick = 0;
+    race.skillTimer = 3.0;
+    race.shake = 0.6;
+    showToast('🔥 인페르노 오버드라이브! 3초간 1,500 km/h 화염 폭주!');
+
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(2.1, 0.36, 10, 32),
+      new THREE.MeshBasicMaterial({ color: 0xff3b00, transparent: true, opacity: 0.95 })
+    );
+    ring.rotation.x = Math.PI / 2;
+    ring.position.set(race.x, 0.8, 0);
+    effectGroup.add(ring);
+    activeEffects.push({ mesh: ring, type: 'pulse', life: 0.65 });
+    return;
+  }
+
+  if (race.skillCD > 0) return;
+
+  if (sk === 'cat') {
+    playCatHissSFX();
+    race.skillCD = 8;
+    race.skillTimer = 3.0;
+    race.shake = 0.32;
+
+    spawnCatClawSlashVFX(race.x, -3.6, 1.85);
+    const hissRing = new THREE.Mesh(
+      new THREE.TorusGeometry(1.8, 0.24, 10, 32),
+      new THREE.MeshBasicMaterial({ color: 0xfb923c, transparent: true, opacity: 0.92 })
+    );
+    hissRing.rotation.x = Math.PI / 2;
+    hissRing.position.set(race.x, 0.85, 0);
+    effectGroup.add(hissRing);
+    activeEffects.push({ mesh: hissRing, type: 'pulse', life: 0.6 });
+
+    let hitCount = 0;
+    aiCars.forEach(ai => {
+      const zPos = ai.mesh.position.z;
+      if (zPos <= 16 && zPos >= -55) {
+        ai.scratchTimer = 4.0;
+        ai.speed = ai.baseSpd * 0.4;
+        hitCount++;
+        spawnCatClawSlashVFX(ai.mesh.position.x, zPos, 1.15);
+      }
+    });
+    showToast(hitCount > 0
+      ? `🐱 하악~! 발톱 할퀴기! ${hitCount}대 스크래치 & 4초 감속!`
+      : '🐱 하악~! 발톱 할퀴기 & 민첩 부스트 (630 km/h)!');
+    return;
+  }
+
+  playSkillSFX();
+  race.skillCD = race.v.cooldown || 11;
+
+  if (sk === 'sky') {
+    race.skillTimer = 4.0;
+    showToast('🪽 스카이 리프터: 4초간 반중력 공중 활강!');
+  } else if (sk === 'pulse') {
+    race.skillTimer = 4.5;
+    race.shake = 0.48;
+
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(1.8, 0.3, 10, 32),
+      new THREE.MeshBasicMaterial({ color: 0xc084fc, transparent: true, opacity: 0.95 })
+    );
+    ring.rotation.x = Math.PI / 2;
+    ring.position.set(race.x, 0.75, 0);
+    effectGroup.add(ring);
+    activeEffects.push({ mesh: ring, type: 'pulse', life: 0.6 });
+
+    const cannon = new THREE.Mesh(
+      new THREE.BoxGeometry(race.roadHalfW * 2 + 4, 2.2, 4.5),
+      new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.82 })
+    );
+    cannon.position.set(0, 1.2, -3);
+    effectGroup.add(cannon);
+    activeEffects.push({ mesh: cannon, type: 'pulse_cannon', life: 0.9 });
+
+    let swept = 0;
+    aiCars.forEach(ai => {
+      const zPos = ai.mesh.position.z;
+      if (zPos <= 14 && zPos >= -85) {
+        launchAIKnockback(ai, race.x);
+        spawnExplosionHitVFX(ai.mesh.position.x, zPos, 0xa855f7);
+        swept++;
+      }
+    });
+    showToast(`💥 펄스 캐논! 전방 ${swept}대 격파 & 4.5초 650 km/h 질주!`);
+  } else if (sk === 'bolt') {
+    race.chargeTimer = 1.0;
+    showToast('⚡ 라이트닝 볼트: 1초 번개 충전 중...');
+  } else if (sk === 'blast') {
+    race.skillTimer = 3.5;
+    race.blastTick = 0;
+    showToast('🔥 블래스트 제트: 3.5초 폭발 돌파 추진!');
+  }
+}
+
+function updateRace(dt) {
+  if (!race || race.finished) return;
+  race.elapsed += dt;
+  const v = race.v;
+  const effStats = race.effStats;
+
+  if (race.skillCD > 0) race.skillCD = Math.max(0, race.skillCD - dt);
+
+  // 인페르노 블레이즈: 1초마다 불 에너지 +20% 충전 (5초 완충)
+  if (v.skill === 'inferno' && race.skillTimer <= 0 && race.fireEnergy < 100) {
+    race.fireChargeTick += dt;
+    if (race.fireChargeTick >= 1.0) {
+      race.fireChargeTick -= 1.0;
+      race.fireEnergy = Math.min(100, race.fireEnergy + 20);
+      if (race.fireEnergy === 100) {
+        playTone(680, 0.16, 'triangle', 0.16);
+        showToast('🔥 불 에너지 100% 완충! (1,500 km/h 발동 가능)');
+      }
+    }
+  }
+
+  if (race.chargeTimer > 0) {
+    race.chargeTimer -= dt;
+    race.shake = 0.14;
+    if (race.chargeTimer <= 0) {
+      race.skillTimer = 2.0;
+      race.shake = 0.52;
+      playSkillSFX();
+      showToast('⚡ 마하 번개 돌진 (880 km/h)!');
+    }
+  }
+  if (race.skillTimer > 0) race.skillTimer = Math.max(0, race.skillTimer - dt);
+
+  const isInfernoCar = v.skill === 'inferno';
+  const isFlying = v.skill === 'sky' && race.skillTimer > 0;
+  const isPulseDash = v.skill === 'pulse' && race.skillTimer > 0;
+  const isMach = v.skill === 'bolt' && race.skillTimer > 0;
+  const isBlast = v.skill === 'blast' && race.skillTimer > 0;
+  const isInfernoDash = isInfernoCar && race.skillTimer > 0;
+  const isCatDash = v.skill === 'cat' && race.skillTimer > 0;
+
+  let targetMax = race.effMaxSpd;
+  if (isInfernoDash) targetMax = Math.max(1500, Math.round(race.effMaxSpd * 1.875));
+  else if (isMach) targetMax = Math.max(880, Math.round(race.effMaxSpd * 1.76));
+  else if (isBlast) targetMax = Math.max(680, Math.round(race.effMaxSpd * 1.36));
+  else if (isPulseDash) targetMax = Math.max(650, Math.round(race.effMaxSpd * 1.3));
+  else if (isCatDash) targetMax = Math.max(630, Math.round(race.effMaxSpd * 1.21));
+  else if (isFlying) targetMax = Math.max(560, Math.round(race.effMaxSpd * 1.12));
+
+  const baseAccel = (18 + effStats[1] * 1.05);
+  const brakeRate = Math.max(220, race.effMaxSpd * 1.15);
+
+  if (isInfernoDash) {
+    race.speed += baseAccel * 9.5 * dt;
+  } else if (isMach || isBlast || isPulseDash || isCatDash) {
+    race.speed += baseAccel * (isMach ? 5.2 : 2.8) * dt;
+  } else {
+    if (input.gas) race.speed += baseAccel * (isInfernoCar ? 2.4 : 1.0) * dt;
+    else if (input.brake) race.speed -= brakeRate * dt;
+    else race.speed -= (isInfernoCar ? 35 : 18) * dt;
+  }
+
+  race.speed = Math.max(0, Math.min(targetMax, race.speed));
+
+  const mps = race.speed / 3.6;
+  race.dist += mps * dt;
+
+  let steer = 0;
+  if (input.left) steer -= 1;
+  if (input.right) steer += 1;
+  if (Math.abs(input.steerVal) > 0.05) steer = input.steerVal;
+  const steerSpd = (5.6 + effStats[2] * 0.095) * (0.45 + 0.55 * Math.min(1, race.speed / 60));
+  race.x += steer * steerSpd * dt;
+  race.x = Math.max(-race.roadHalfW, Math.min(race.roadHalfW, race.x));
+
+  const targetY = isFlying ? 2.9 : 0;
+  playerMesh.position.x = race.x;
+  playerMesh.position.y += (targetY - playerMesh.position.y) * Math.min(1, dt * 8);
+  const bankAng = -steer * (v.type === 'bike' || v.type === 'moto' ? 0.34 : 0.09);
+  playerMesh.rotation.z += (bankAng - playerMesh.rotation.z) * Math.min(1, dt * 10);
+  playerMesh.rotation.y = -steer * 0.06;
+
+  playerMesh.userData.wheels.forEach(w => w.rotation.x -= mps * dt * 1.4);
+  playerMesh.userData.brakeLights.forEach(bl => {
+    bl.material.emissiveIntensity = input.brake ? 3.4 : 0.9;
+  });
+
+  if (playerMesh.userData.wings) {
+    const ws = isFlying ? 1 : 0.01;
+    playerMesh.userData.wings.scale.x += (ws - playerMesh.userData.wings.scale.x) * Math.min(1, dt * 10);
+  }
+
+  if (playerMesh.userData.catTail) {
+    playerMesh.userData.catTail.rotation.y = Math.sin(race.elapsed * 9.0) * 0.48;
+    playerMesh.userData.catTail.rotation.z = Math.cos(race.elapsed * 6.5) * 0.16;
+  }
+
+  if (playerMesh.userData.isInferno) {
+    if (playerMesh.userData.infernoAura) {
+      playerMesh.userData.infernoAura.visible = isInfernoDash;
+      if (isInfernoDash) {
+        playerMesh.userData.infernoAura.rotation.z += dt * 16;
+        race.shake = Math.max(race.shake, 0.25);
+      }
+    }
+    race.infernoFlameTick -= dt;
+    if (race.infernoFlameTick <= 0) {
+      race.infernoFlameTick = isInfernoDash ? 0.028 : 0.07;
+      spawnInfernoFlameParticle(race.x, playerMesh.position.y, 0, isInfernoDash);
+    }
+  }
+
+  if (isBlast) {
+    race.blastTick -= dt;
+    if (race.blastTick <= 0) {
+      race.blastTick = 0.2;
+      race.shake = Math.max(race.shake, 0.22);
+      playTone(125, 0.12, 'sawtooth', 0.13);
+      const boom = new THREE.Mesh(
+        new THREE.SphereGeometry(0.95, 10, 10),
+        new THREE.MeshBasicMaterial({ color: 0xf97316, transparent: true, opacity: 0.9 })
+      );
+      boom.position.set(race.x, 0.62, 2.5);
+      effectGroup.add(boom);
+      activeEffects.push({ mesh: boom, type: 'boom', life: 0.32 });
+    }
+  }
+
+  if (isPulseDash) {
+    race.pulseTrailTick -= dt;
+    if (race.pulseTrailTick <= 0) {
+      race.pulseTrailTick = 0.08;
+      const trail = createGlowSprite(Math.random() > 0.5 ? '#c084fc' : '#38bdf8', 2.2);
+      trail.position.set(race.x + (Math.random() - 0.5) * 1.1, 0.65, 2.3);
+      effectGroup.add(trail);
+      activeEffects.push({ mesh: trail, type: 'inferno_flame', life: 0.28, vx: 0, vy: 0.4, vz: 20 });
+    }
+  }
+
+  // 도로, 인도, 지면, 프롭 스크롤 (인도도 도로와 정확히 1:1 속도로 스크롤)
+  roadTex.offset.y += mps * dt * 0.045;
+  if (sidewalkTex) sidewalkTex.offset.y += mps * dt * 0.045;
+  if (groundTex) groundTex.offset.y += mps * dt * 0.015;
+  props.forEach(p => {
+    p.position.z += mps * dt;
+    if (p.position.z > 24) p.position.z -= 432;
+  });
+  clouds.forEach(cl => {
+    cl.position.x += 2.2 * dt;
+    if (cl.position.x > 140) cl.position.x = -140;
+  });
+
+  if (weatherPoints) {
+    const arr = weatherPoints.geometry.attributes.position.array;
+    const kind = weatherPoints.userData.kind;
+    for (let i = 0; i < arr.length; i += 3) {
+      arr[i + 2] += (mps + (kind === 'space' ? 34 : 12)) * dt;
+      if (kind === 'rain') arr[i + 1] -= 34 * dt;
+      else if (kind === 'snow') arr[i + 1] -= 5.2 * dt;
+      if (arr[i + 2] > 20) arr[i + 2] -= 165;
+      if (arr[i + 1] < 0) arr[i + 1] = 35;
+    }
+    weatherPoints.geometry.attributes.position.needsUpdate = true;
+  }
+
+  let rank = 1;
+  aiCars.forEach(ai => {
+    if (ai.knockTimer > 0) {
+      ai.knockTimer -= dt;
+      ai.x += ai.knockVx * dt;
+      ai.x = Math.max(-race.roadHalfW - 2.5, Math.min(race.roadHalfW + 2.5, ai.x));
+      ai.knockY = Math.max(0, ai.knockY + ai.knockVy * dt);
+      ai.knockVy -= 26 * dt;
+      ai.mesh.position.set(ai.x, ai.knockY, -(ai.dist - race.dist));
+      ai.mesh.rotation.z += ai.knockRoll * dt;
+      ai.mesh.rotation.x += 6 * dt;
+      if (ai.knockTimer <= 0) {
+        ai.mesh.position.y = 0;
+        ai.mesh.rotation.z = 0;
+        ai.mesh.rotation.x = 0;
+        ai.x = Math.max(-race.roadHalfW, Math.min(race.roadHalfW, ai.x));
+        ai.targetX = ai.x;
+        if (ai.mesh.userData.stunRing) ai.mesh.userData.stunRing.visible = true;
+      }
+    } else if (ai.stunTimer > 0) {
+      ai.stunTimer -= dt;
+      ai.mesh.position.set(ai.x, 0, -(ai.dist - race.dist));
+      if (ai.mesh.userData.stunRing) {
+        ai.mesh.userData.stunRing.visible = true;
+        ai.mesh.userData.stunRing.rotation.z += dt * 7;
+      }
+      if (ai.stunTimer <= 0) {
+        ai.speed = ai.baseSpd;
+        if (ai.mesh.userData.stunRing) ai.mesh.userData.stunRing.visible = false;
+      }
+    } else {
+      let curSpd = ai.speed;
+      if (ai.scratchTimer > 0) {
+        ai.scratchTimer -= dt;
+        curSpd = ai.baseSpd * 0.4;
+        ai.x += Math.sin(race.elapsed * 16 + ai.dist) * 3.2 * dt;
+        ai.x = Math.max(-race.roadHalfW, Math.min(race.roadHalfW, ai.x));
+        if (ai.mesh.userData.scratchMarks) ai.mesh.userData.scratchMarks.visible = true;
+        if (ai.scratchTimer <= 0) {
+          ai.speed = ai.baseSpd;
+          if (ai.mesh.userData.scratchMarks) ai.mesh.userData.scratchMarks.visible = false;
+        }
+      }
+
+      const aiMps = (curSpd / 3.6) * ai.dir;
+      ai.dist += aiMps * dt;
+      if (ai.isRival) {
+        ai.laneTimer -= dt;
+        if (ai.laneTimer <= 0) {
+          ai.laneTimer = 1.8 + Math.random() * 2.4;
+          const lIdx = Math.floor(Math.random() * race.cfg.lanes);
+          ai.targetX = -((race.cfg.lanes - 1) * 3.4) / 2 + lIdx * 3.4;
+        }
+        if (ai.scratchTimer <= 0) {
+          ai.x += (ai.targetX - ai.x) * Math.min(1, dt * 3);
+        }
+        ai.mesh.position.set(ai.x, 0, -(ai.dist - race.dist));
+        ai.mesh.visible = ai.mesh.position.z > -280 && ai.mesh.position.z < 35;
+      } else {
+        const relZ = -(ai.dist - race.dist);
+        if (relZ > 28) {
+          ai.dist = race.dist + 165 + Math.random() * 115;
+          const lIdx = Math.floor(Math.random() * race.cfg.lanes);
+          ai.x = -((race.cfg.lanes - 1) * 3.4) / 2 + lIdx * 3.4;
+          const oncoming = race.cfg.isTwoWay && lIdx < race.cfg.lanes / 2;
+          ai.dir = oncoming ? -1 : 1;
+          ai.mesh.rotation.y = oncoming ? Math.PI : 0;
+        } else if (relZ < -280) {
+          ai.dist = race.dist + 145 + Math.random() * 80;
+        }
+        ai.mesh.position.set(ai.x, 0, -(ai.dist - race.dist));
+      }
+      ai.mesh.userData.wheels.forEach(w => w.rotation.x -= Math.abs(aiMps) * dt * 1.4);
+    }
+
+    if (ai.isRival && ai.dist > race.dist) rank++;
+
+    if (isInfernoCar && ai.knockTimer <= 0) {
+      const hitZ = isInfernoDash ? 12 : 4.6;
+      const hitX = isInfernoDash ? 4.4 : 2.55;
+      if (Math.abs(ai.mesh.position.z) < hitZ && Math.abs(ai.mesh.position.x - race.x) < hitX) {
+        playBlastHitSFX();
+        race.shake = Math.max(race.shake, isInfernoDash ? 0.36 : 0.24);
+        launchAIKnockback(ai, race.x);
+        spawnExplosionHitVFX(ai.mesh.position.x, ai.mesh.position.z, 0xff2200);
+        if (isInfernoDash) showToast('🔥 인페르노 화염 돌파! 상대 차량 폭파 & 2초 정지!');
+      }
+    }
+
+    if (isBlast && ai.knockTimer <= 0) {
+      const dx = Math.abs(ai.mesh.position.x - race.x);
+      const dz = Math.abs(ai.mesh.position.z);
+      if (dx < 2.2 && dz < 4.2) {
+        playBlastHitSFX();
+        race.shake = 0.38;
+        launchAIKnockback(ai, race.x);
+        spawnExplosionHitVFX(ai.mesh.position.x, ai.mesh.position.z, 0xf97316);
+        showToast('💥 폭발 돌파! 상대 차량 날림 & 2초 정지!');
+      }
+    }
+
+    if (!isInfernoCar && !isFlying && !isPulseDash && !isMach && !isBlast && ai.knockTimer <= 0) {
+      const dx = Math.abs(ai.mesh.position.x - race.x);
+      const dz = Math.abs(ai.mesh.position.z);
+      const hitW = (v.type === 'bike' || v.type === 'moto') ? 1.15 : 1.75;
+      if (dx < hitW && dz < 3.45) {
+        playCrashSFX();
+        race.shake = 0.45;
+        race.speed *= 0.52;
+        race.hp = Math.max(0, race.hp - 18);
+        race.x += (race.x < ai.mesh.position.x ? -1.4 : 1.4);
+        race.x = Math.max(-race.roadHalfW, Math.min(race.roadHalfW, race.x));
+        if (!ai.isRival) ai.dist = race.dist + 185;
+        else ai.dist -= 5;
+      }
+    }
+  });
+
+  for (let i = activeEffects.length - 1; i >= 0; i--) {
+    const ef = activeEffects[i];
+    ef.life -= dt;
+    if (ef.type === 'pulse') {
+      ef.mesh.scale.multiplyScalar(1 + dt * 11);
+      ef.mesh.material.opacity = Math.max(0, ef.life * 1.45);
+    } else if (ef.type === 'pulse_cannon') {
+      ef.mesh.position.z -= 115 * dt;
+      ef.mesh.scale.y = 1 + (0.9 - ef.life) * 1.5;
+      ef.mesh.material.opacity = Math.max(0, ef.life * 1.1);
+    } else if (ef.type === 'boom') {
+      ef.mesh.scale.multiplyScalar(1 + dt * 5.2);
+      ef.mesh.position.z += 12 * dt;
+      ef.mesh.material.opacity = Math.max(0, ef.life * 2.5);
+    } else if (ef.type === 'debris') {
+      ef.mesh.position.x += ef.vx * dt;
+      ef.mesh.position.y += ef.vy * dt;
+      ef.mesh.position.z += ef.vz * dt;
+      ef.vy -= 22 * dt;
+      ef.mesh.material.opacity = Math.max(0, ef.life * 2.1);
+    } else if (ef.type === 'inferno_flame') {
+      ef.mesh.position.x += ef.vx * dt;
+      ef.mesh.position.y += ef.vy * dt;
+      ef.mesh.position.z += ef.vz * dt;
+      ef.mesh.scale.multiplyScalar(Math.max(0.1, 1 - dt * 1.5));
+      if (ef.mesh.material) ef.mesh.material.opacity = Math.max(0, ef.life * 2.4);
+    } else if (ef.type === 'cat_slash') {
+      ef.mesh.scale.multiplyScalar(1 + dt * 2.2);
+      ef.mesh.children.forEach(ch => {
+        if (ch.material) ch.material.opacity = Math.max(0, ef.life * 2.2);
+      });
+    }
+    if (ef.life <= 0) {
+      effectGroup.remove(ef.mesh);
+      activeEffects.splice(i, 1);
+    }
+  }
+
+  const targetFov = 62 + Math.min(26, race.speed / 24)
+    + (isInfernoDash ? 26 : 0)
+    + (isMach ? 18 : 0)
+    + (isPulseDash ? 12 : 0)
+    + (isBlast ? 8 : 0)
+    + (isCatDash ? 7 : 0)
+    - (race.chargeTimer > 0 ? 10 : 0);
+  camera.fov += (targetFov - camera.fov) * Math.min(1, dt * 6);
+  camera.updateProjectionMatrix();
+
+  race.shake = Math.max(0, race.shake - dt * 1.8);
+  const sx = (Math.random() - 0.5) * race.shake;
+  const sy = (Math.random() - 0.5) * race.shake;
+  camera.position.set(race.x * 0.72 + sx, 3.25 + (isFlying ? 1.55 : 0) + sy, 7.5);
+  camera.lookAt(race.x * 0.45, 1.05 + (isFlying ? 1.2 : 0), -28);
+
+  document.getElementById('speed-display').textContent = Math.round(race.speed);
+  const hpPct = Math.round((race.hp / race.maxHp) * 100);
+  const hpBar = document.getElementById('hp-bar');
+  hpBar.style.width = hpPct + '%';
+  hpBar.style.background = hpPct > 35
+    ? 'linear-gradient(90deg, #10b981, #34d399)'
+    : 'linear-gradient(90deg, #ef4444, #f97316)';
+  document.getElementById('hp-text').textContent = hpPct + '%';
+  document.getElementById('race-stat2-val').textContent = (race.dist / 1000).toFixed(2) + ' km';
+
+  if (v.tier === 'S' || v.tier === 'H') {
+    const sb = document.getElementById('btn-skill');
+    const sc = document.getElementById('skill-cd');
+    if (v.skill === 'inferno') {
+      if (race.skillTimer > 0) {
+        sb.classList.add('ready');
+        sc.textContent = '1500!';
+      } else if (race.fireEnergy >= 100) {
+        sb.classList.add('ready');
+        sc.textContent = 'READY';
+      } else {
+        sb.classList.remove('ready');
+        sc.textContent = `${race.fireEnergy}%`;
+      }
+    } else {
+      if (race.skillCD > 0) { sb.classList.remove('ready'); sc.textContent = Math.ceil(race.skillCD) + 's'; }
+      else { sb.classList.add('ready'); sc.textContent = 'READY'; }
+    }
+  }
+
+  const c = race.cfg;
+  if (c.mode === 'drive') {
+    if (c.driveType === 'distance') race.score = Math.floor(race.dist / 10);
+    else if (c.driveType === 'time') {
+      race.scoreTick += dt;
+      if (race.scoreTick >= 10) { race.scoreTick -= 10; race.score += 100; showToast('⏱️ 시간 주행 +100점!'); }
+    }
+    document.getElementById('race-stat1-val').textContent = c.driveType === 'free' ? '자유 주행' : (race.score + ' 점');
+    document.getElementById('race-stat1-lbl').textContent = '주행 점수';
+    if (race.hp <= 0) finishRace(false, '차체 내구도가 소진되어 주행이 종료되었습니다.', rank);
+  } else {
+    if (c.mode === 'level_race' || c.mode === 'competitive') {
+      document.getElementById('race-stat1-val').textContent = `${rank}위 / 8`;
+      document.getElementById('race-stat1-lbl').textContent = `목표 ${(c.targetDist / 1000).toFixed(1)}km`;
+      if (race.dist >= c.targetDist) finishRace(rank === 1 || (c.mode === 'competitive' && rank <= 4), `${rank}위로 결승선을 통과했습니다!`, rank);
+    } else if (c.mode === 'level_time') {
+      race.timeLeft -= dt;
+      const m = Math.floor(Math.max(0, race.timeLeft) / 60);
+      const s = Math.floor(Math.max(0, race.timeLeft) % 60);
+      document.getElementById('race-timer-val').textContent = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+      document.getElementById('race-stat1-val').textContent = `${Math.min(100, Math.round(race.dist / c.targetDist * 100))}%`;
+      document.getElementById('race-stat1-lbl').textContent = `목표 ${(c.targetDist / 1000).toFixed(2)}km`;
+      if (race.dist >= c.targetDist) finishRace(true, '제한 시간(1분 30초) 내 목표 거리 완주 성공!', 1);
+      else if (race.timeLeft <= 0) finishRace(false, '제한 시간이 초과되었습니다!', 8);
+    }
+    if (race.hp <= 0) finishRace(false, '차체가 파손되었습니다!', 8);
+  }
+}
+
+function finishRace(win, desc, rank) {
+  if (!race || race.finished) return;
+  race.finished = true;
+  const c = race.cfg;
+  let goldGain = 0, diaGain = 0, spGain = 0, trophyDelta = 0;
+
+  if (c.mode === 'drive') {
+    const km = race.dist / 1000;
+    state.totalDriveKm = Number((state.totalDriveKm + km).toFixed(2));
+    goldGain = Math.max(30, Math.floor(race.dist / 12));
+    if (race.dist >= 1500) diaGain = Math.floor(race.dist / 1500);
+  } else if (c.mode === 'competitive') {
+    const pts = [20, 15, 12, 10, 4, 0, -4, -8];
+    trophyDelta = pts[Math.min(7, Math.max(0, rank - 1))];
+    state.trophies = Math.max(0, state.trophies + trophyDelta);
+    if (rank === 1) state.winStreak = (state.winStreak || 0) + 1;
+    else state.winStreak = 0;
+
+    goldGain = Math.max(60, (9 - rank) * 45);
+    if (rank <= 3) diaGain = (4 - rank) * 2;
+    if (rank === 1) spGain = 1;
+  } else {
+    goldGain = win ? (120 + c.level * 22) : 40;
+    if (win) {
+      spGain = 2;
+      if (c.level % 5 === 0) diaGain = 5;
+      else if (Math.random() < 0.35) diaGain = 2;
+      if (c.level > state.maxCleared) {
+        state.maxCleared = c.level;
+        state.level = Math.min(100, state.maxCleared + 1);
+      }
+    }
+  }
+
+  state.gold += goldGain;
+  state.dia += diaGain;
+  state.sp += spGain;
+  saveGame();
+  if (c.mode === 'competitive') syncOnlineRanking();
+
+  playTone(win ? 780 : 180, 0.25, 'triangle', 0.18);
+  document.getElementById('res-title').textContent = win ? '🏆 미션 성공!' : (c.mode === 'drive' ? '🛣️ 주행 종료' : '💥 도전 실패');
+  document.getElementById('res-desc').textContent = desc;
+  let rHtml = `🪙 골드 +${goldGain}`;
+  if (diaGain > 0) rHtml += `<br>💎 다이아 +${diaGain}`;
+  if (spGain > 0) rHtml += `<br>⚡ 스텟 포인트 +${spGain} SP`;
+  if (c.mode === 'drive' && c.driveType !== 'free') rHtml += `<br>📊 주행 점수: ${race.score}점 (${(race.dist / 1000).toFixed(2)} km)`;
+  if (c.mode === 'competitive') {
+    rHtml += `<br>🏆 트로피 ${trophyDelta >= 0 ? '+' : ''}${trophyDelta} (현재 ${state.trophies}점)`;
+    rHtml += `<br>🔥 경쟁 1등 연승: ${state.winStreak} / 10`;
+  }
+  if (c.mode === 'drive') {
+    rHtml += `<br>🛣️ 누적 주행 거리: ${state.totalDriveKm.toFixed(2)} / 50.00 km`;
+  }
+  document.getElementById('res-rewards').innerHTML = rHtml;
+  openModal('result-modal');
+}
+
+function togglePause() {
+  if (gamePhase === 'race') {
+    gamePhase = 'paused';
+    openModal('pause-modal');
+  } else if (gamePhase === 'paused') {
+    closeAllModals();
+    gamePhase = 'race';
+    clock.getDelta();
+  }
+}
+
+function exitRace() {
+  if (race && race.cfg.mode === 'drive' && !race.finished && race.dist > 50) {
+    finishRace(true, '주행을 마치고 차고로 복귀했습니다.', 1);
+    return;
+  }
+  race = null;
+  closeAllModals();
+  document.getElementById('race-ui').classList.remove('active');
+  document.getElementById('home-ui').classList.add('active');
+  setupHomeScene();
+}
+
+function retryRace() {
+  if (race) startRaceSession(race.cfg);
+}
+
+/* ============================================================================
+   9. 메인 3D 애니메이션 루프
+   ============================================================================ */
+let showcaseFlameTick = 0;
+
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = Math.min(0.05, clock.getDelta());
+
+  if (gamePhase === 'home') {
+    if (!isDraggingShowcase) homeOrbitYaw += dt * 0.44;
+    camera.fov = 52;
+    camera.updateProjectionMatrix();
+    const dist = 6.35;
+    camera.position.set(
+      Math.sin(homeOrbitYaw) * Math.cos(homeOrbitPitch) * dist,
+      1.15 + Math.sin(homeOrbitPitch) * dist,
+      Math.cos(homeOrbitYaw) * Math.cos(homeOrbitPitch) * dist
+    );
+    camera.lookAt(0, 0.85, 0);
+    if (roadTex) roadTex.offset.y += dt * 0.25;
+    if (sidewalkTex) sidewalkTex.offset.y += dt * 0.25;
+
+    const carMesh = showcaseGroup.children[0];
+    if (carMesh) {
+      if (carMesh.userData.catTail) {
+        carMesh.userData.catTail.rotation.y = Math.sin(performance.now() * 0.006) * 0.48;
+      }
+      if (carMesh.userData.isInferno) {
+        showcaseFlameTick -= dt;
+        if (showcaseFlameTick <= 0) {
+          showcaseFlameTick = 0.085;
+          spawnInfernoFlameParticle(0, 0, 0, false);
+        }
+      }
+    }
+    for (let i = activeEffects.length - 1; i >= 0; i--) {
+      const ef = activeEffects[i];
+      ef.life -= dt;
+      if (ef.type === 'inferno_flame') {
+        ef.mesh.position.x += ef.vx * dt;
+        ef.mesh.position.y += ef.vy * dt;
+        ef.mesh.position.z += ef.vz * dt * 0.45;
+        ef.mesh.scale.multiplyScalar(Math.max(0.1, 1 - dt * 1.4));
+        if (ef.mesh.material) ef.mesh.material.opacity = Math.max(0, ef.life * 2.2);
+      }
+      if (ef.life <= 0) {
+        effectGroup.remove(ef.mesh);
+        activeEffects.splice(i, 1);
+      }
+    }
+  } else if (gamePhase === 'race') {
+    updateRace(dt);
+  }
+
+  renderer.render(scene, camera);
+}
+
+/* ============================================================================
+   10. UI 모달 / 차고 / SP 강화 / 저장 슬롯 제어
+   ============================================================================ */
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+function openModal(id) {
+  initAudio();
+  closeAllModals();
+  if (id === 'garage-modal') renderGarage();
+  if (id === 'save-modal') renderSaveSlots();
+  if (id === 'settings-modal') {
+    resetConfirmStep = 0;
+    document.getElementById('btn-reset-confirm').textContent = '🗑️ 데이터 초기화';
+    applySettingsUI();
+  }
+  if (id === 'mode-modal') {
+    document.getElementById('mode-lvl-text').textContent = state.level;
+    document.getElementById('mode-streak-text').textContent = `${state.winStreak || 0}/10`;
+  }
+  document.getElementById(id).classList.add('open');
+}
+
+function closeAllModals() {
+  document.querySelectorAll('.modal-backdrop').forEach(m => m.classList.remove('open'));
+}
+
+function updateHomeHUD() {
+  document.getElementById('hud-lvl').textContent = state.level;
+  document.getElementById('hud-trophy').textContent = state.trophies;
+  document.getElementById('hud-gold').textContent = state.gold.toLocaleString();
+  document.getElementById('hud-dia').textContent = state.dia.toLocaleString();
+  document.getElementById('hud-sp').textContent = state.sp;
+
+  const v = VEHICLES.find(x => x.id === state.selectedCar) || VEHICLES[0];
+  const tb = document.getElementById('home-car-tier');
+  tb.textContent = v.tier === 'H' ? 'HIDDEN' : v.tier;
+  tb.className = 'tier-badge tier-' + v.tier;
+  document.getElementById('home-car-name').textContent = v.name;
+  document.getElementById('home-car-ovr').textContent = calcOVR(v);
+  document.getElementById('home-car-spd').textContent = getEffectiveMaxSpeed(v);
+}
+
+function buySP(currency) {
+  if (currency === 'gold') {
+    if (state.gold < 200) return showToast('🪙 골드가 부족합니다! (200 필요)');
+    state.gold -= 200;
+    state.sp += 1;
+    showToast('⚡ +1 SP 구매 완료!');
+  } else {
+    if (state.dia < 10) return showToast('💎 다이아가 부족합니다! (10 필요)');
+    state.dia -= 10;
+    state.sp += 5;
+    showToast('⚡ +5 SP 대량 구매 완료!');
+  }
+  playTone(660, 0.14, 'triangle', 0.15);
+  saveGame();
+  updateHomeHUD();
+  renderGarage();
+}
+
+function upgradeStat(carId, statIdx) {
+  const up = getCarUpgrades(carId);
+  if (up[statIdx] >= MAX_STAT_LV) return showToast('이미 최대 레벨(Lv.15)입니다!');
+  if (state.sp < 1) return showToast('⚡ SP가 부족합니다! 상점에서 SP를 구매하세요.');
+  state.sp -= 1;
+  up[statIdx] += 1;
+  playTone(740, 0.12, 'triangle', 0.16);
+  saveGame();
+  updateHomeHUD();
+  renderGarage();
+}
+
+function renderGarage() {
+  document.getElementById('g-gold').textContent = state.gold.toLocaleString();
+  document.getElementById('g-dia').textContent = state.dia.toLocaleString();
+  document.getElementById('g-sp').textContent = state.sp;
+
+  document.getElementById('tier-tabs').innerHTML = ['D', 'C', 'B', 'A', 'S', 'H'].map(t =>
+    `<button class="btn tier-tab tier-${t} ${activeGarageTier === t ? 'active' : ''}" onclick="activeGarageTier='${t}';renderGarage();">${t === 'H' ? '🔥 HIDDEN' : t + '티어'}</button>`
+  ).join('');
+
+  const filtered = VEHICLES.filter(v => v.tier === activeGarageTier);
+  document.getElementById('car-list').innerHTML = filtered.map(v => {
+    const sel = state.selectedCar === v.id;
+    return `<div class="car-card ${sel ? 'selected' : ''}" onclick="selectGarageCar('${v.id}')">
+      <span class="tier-badge tier-${v.tier}">${v.tier === 'H' ? 'HIDDEN' : v.tier}</span>
+      <span style="float:right; font-size:11px; color:${sel ? '#34d399' : '#94a3b8'};">${sel ? '장착중' : '해금됨'}</span>
+      <div class="name">${v.name}</div>
+      <div class="sub">OVR ${calcOVR(v)} · ${getEffectiveMaxSpeed(v)} km/h</div>
+    </div>`;
+  }).join('');
+
+  const detailCar = filtered.find(v => v.id === state.selectedCar) || filtered[0];
+  renderCarDetail(detailCar);
+
+  if (activeGarageTier === 'H') {
+    document.getElementById('gacha-bar').innerHTML = `
+      <div style="font-size:12px; font-weight:800; color:#fde047;">
+        🔥 HIDDEN 티어 차량은 뽑기가 아닌 히든 업적 달성으로 해금됩니다 (현재 테스트판 무료 해금 중!)
+      </div>`;
+  } else {
+    const gInfo = GACHA_COST[activeGarageTier];
+    const currIcon = gInfo.curr === 'gold' ? '🪙' : '💎';
+    const lockedS = gInfo.minLvl && state.level < gInfo.minLvl;
+    document.getElementById('gacha-bar').innerHTML = `
+      <div style="font-size:12px; font-weight:800;">
+        🎰 ${activeGarageTier}티어 뽑기 테스트 ${lockedS ? `<span style="color:#f87171;">(정식판 Lv.${gInfo.minLvl} 해금)</span>` : ''}
+      </div>
+      <div style="display:flex; gap:8px;">
+        <button class="btn ${gInfo.curr === 'gold' ? 'btn-gold' : 'btn-dia'}" style="padding:7px 12px; font-size:11px;" onclick="rollGacha('${activeGarageTier}',1)">1회 (${currIcon}${gInfo.c1})</button>
+        <button class="btn ${gInfo.curr === 'gold' ? 'btn-gold' : 'btn-dia'}" style="padding:7px 12px; font-size:11px;" onclick="rollGacha('${activeGarageTier}',10)">10회 (${currIcon}${gInfo.c10})</button>
+      </div>`;
+  }
+}
+
+function selectGarageCar(id) {
+  state.selectedCar = id;
+  playTone(540, 0.08, 'sine', 0.12);
+  saveGame();
+  if (gamePhase === 'home') buildShowcaseCar();
+  renderGarage();
+  syncOnlineRanking();
+}
+
+function renderCarDetail(v) {
+  const effStats = getEffectiveStats(v);
+  const up = getCarUpgrades(v.id);
+  const names = ['최대 속력', '순간 가속', '조작성', '내구성'];
+
+  let unlockBanner = '';
+  if (v.id === 'h1') {
+    unlockBanner = `
+      <div style="background:rgba(220,38,38,0.18); border:1px solid #f87171; border-radius:10px; padding:7px 9px; font-size:11px; color:#fecaca; line-height:1.45;">
+        <strong>🔒 정식 획득 조건:</strong> Lv.100 도달 + 경쟁 모드 10연속 1등 달성 (현재 연승: <strong style="color:#fde047;">${state.winStreak || 0}/10</strong>) <span style="color:#86efac;">[테스트 버전 임시 해금]</span>
+      </div>`;
+  } else if (v.id === 'h2') {
+    unlockBanner = `
+      <div style="background:rgba(251,146,60,0.18); border:1px solid #fb923c; border-radius:10px; padding:7px 9px; font-size:11px; color:#ffedd5; line-height:1.45;">
+        <strong>🔒 정식 획득 조건:</strong> 주행 모드 누적 50km 완주 히든 미션 (현재 누적: <strong style="color:#fde047;">${(state.totalDriveKm || 0).toFixed(2)}/50km</strong>) <span style="color:#86efac;">[테스트 버전 임시 해금]</span>
+      </div>`;
+  }
+
+  document.getElementById('car-detail').innerHTML = `
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <div>
+        <span class="tier-badge tier-${v.tier}">${v.tier === 'H' ? 'HIDDEN' : v.tier}</span>
+        <strong style="font-size:15px; margin-left:6px;">${v.name}</strong>
+      </div>
+      <span style="color:#38bdf8; font-weight:900;">OVR ${calcOVR(v)}</span>
+    </div>
+    <div style="display:flex; justify-content:space-between; font-size:12px; color:#fbbf24; font-weight:800;">
+      <span>최고 속도: ${getEffectiveMaxSpeed(v)} km/h</span>
+      <span style="color:#34d399; font-size:11px;">🛑 최고 브레이크 기본 탑재</span>
+    </div>
+    ${effStats.map((val, i) => `
+      <div class="stat-row">
+        <span class="label">${names[i]}</span>
+        <div class="stat-bar-bg"><div class="stat-bar-fill" style="width:${Math.min(100, val)}%"></div></div>
+        <span style="width:46px; text-align:right; font-weight:800; font-size:11px;">${val} <span style="color:#94a3b8;">(+${up[i]})</span></span>
+        <button class="btn btn-sp stat-up-btn" ${up[i] >= MAX_STAT_LV || state.sp < 1 ? 'disabled' : ''} onclick="upgradeStat('${v.id}',${i})">
+          ${up[i] >= MAX_STAT_LV ? 'MAX' : '+1⚡'}
+        </button>
+      </div>
+    `).join('')}
+    ${v.skill ? `
+      <div style="background:rgba(168,85,247,0.16); border:1px solid #c084fc; border-radius:10px; padding:8px; font-size:11px; line-height:1.45;">
+        <strong style="color:#fde047;">⚡ 특수능력: ${v.skillName} (${v.skill === 'inferno' ? '1초당 불 에너지 +20% / 5초 충전' : `쿨타임 ${v.cooldown}초`})</strong><br>
+        <span style="color:#e2e8f0;">${v.skillDesc}</span>
+      </div>` : ''}
+    ${unlockBanner}
+  `;
+}
+
+function rollGacha(tier, count) {
+  const g = GACHA_COST[tier];
+  if (!g) return;
+  const cost = count === 1 ? g.c1 : g.c10;
+  if (state[g.curr] < cost) return showToast(g.curr === 'gold' ? '🪙 골드가 부족합니다!' : '💎 다이아가 부족합니다!');
+  state[g.curr] -= cost;
+  const pool = VEHICLES.filter(v => v.tier === tier);
+  const picked = pool[Math.floor(Math.random() * pool.length)];
+  const refund = Math.round(cost * 0.35);
+  state[g.curr] += refund;
+  playSkillSFX();
+  saveGame();
+  updateHomeHUD();
+  renderGarage();
+  showToast(`🎰 [${picked.name}] 등 ${count}회 뽑기 완료! (전 차량 해금 중: ${g.curr === 'gold' ? '🪙' : '💎'}+${refund} 환급)`);
+}
+
+function openLevelModal() {
+  let html = '';
+  for (let i = 1; i <= 100; i++) {
+    const unlocked = i <= state.maxCleared + 1;
+    const cls = i <= state.maxCleared ? 'cleared' : (i === state.maxCleared + 1 ? 'current' : 'locked');
+    html += `<button class="lvl-btn ${cls}" ${unlocked ? '' : 'disabled'} onclick="startLevel(${i})">${i}</button>`;
+  }
+  document.getElementById('level-grid').innerHTML = html;
+  openModal('level-modal');
+}
+
+function startLevel(lv) {
+  const isRace = lv % 2 === 1;
+  const mapList = ['city', 'mountain', 'range', 'country', 'undersea', 'future', 'space'];
+  startRaceSession({
+    mode: isRace ? 'level_race' : 'level_time',
+    level: lv,
+    lanes: 3, isTwoWay: false,
+    map: mapList[(lv - 1) % mapList.length],
+    time: lv % 4 === 0 ? 'night' : 'day',
+    season: ['spring', 'summer', 'autumn', 'winter'][lv % 4],
+    weather: lv % 7 === 0 ? 'rain' : 'clear',
+    targetDist: isRace ? (950 + lv * 55) : (850 + lv * 65),
+    timeLimit: isRace ? 0 : 90,
+    title: `Lv.${lv} ${isRace ? '8인 경주' : '1분30초 완주'} (3차선)`
+  });
+}
+
+function openDriveModal() {
+  renderDriveOpts();
+  document.getElementById('drive-cum-km').textContent = (state.totalDriveKm || 0).toFixed(2);
+  openModal('drive-modal');
+}
+
+function renderDriveOpts() {
+  const mk = (elId, items, key) => {
+    document.getElementById(elId).innerHTML = items.map(it => {
+      const locked = it.minLvl && state.level < it.minLvl;
+      return `<button class="opt-chip ${driveOpts[key] === it.id ? 'active' : ''} ${locked ? 'locked' : ''}"
+        onclick="${locked ? `showToast('Lv.${it.minLvl} 달성 시 해금됩니다! (설정에서 테스트 Lv+25 지원 가능)')` : `driveOpts.${key}='${it.id}';renderDriveOpts();`}">
+        ${it.name}${locked ? ` (Lv.${it.minLvl})` : ''}</button>`;
+    }).join('');
+  };
+  mk('opt-drive-type', [{ id:'distance', name:'거리 주행' }, { id:'time', name:'시간 주행' }, { id:'free', name:'자유 주행' }], 'type');
+  mk('opt-map', MAPS, 'map');
+  mk('opt-time', [{ id:'day', name:'☀️ 낮' }, { id:'night', name:'🌙 밤' }], 'time');
+  mk('opt-season', [{ id:'spring', name:'🌸 봄' }, { id:'summer', name:'🌿 여름' }, { id:'autumn', name:'🍁 가을' }, { id:'winter', name:'❄️ 겨울' }], 'season');
+  mk('opt-weather', [{ id:'clear', name:'맑음' }, { id:'rain', name:'🌧️ 비' }, { id:'snow', name:'🌨️ 눈' }, { id:'fog', name:'🌫️ 안개' }], 'weather');
+}
+
+function startDriveMode() {
+  const mName = MAPS.find(m => m.id === driveOpts.map).name;
+  const tName = { distance:'거리 주행', time:'시간 주행', free:'자유 주행' }[driveOpts.type];
+  startRaceSession({
+    mode: 'drive', driveType: driveOpts.type,
+    lanes: 6, isTwoWay: true,
+    map: driveOpts.map, time: driveOpts.time, season: driveOpts.season, weather: driveOpts.weather,
+    title: `${tName} (6차선) · ${mName}`
+  });
+}
+
+function startCompetitiveMode() {
+  startRaceSession({
+    mode: 'competitive', lanes: 3, isTwoWay: false,
+    map: state.trophies >= 200 ? 'future' : 'city',
+    time: state.trophies >= 100 ? 'night' : 'day',
+    season: 'spring', weather: 'clear',
+    targetDist: 1700 + Math.min(2000, state.trophies * 4),
+    title: `🏆 경쟁 모드 (8인) · ${state.trophies}점`
+  });
+}
+
+function renderSaveSlots() {
+  const el = document.getElementById('save-slots');
+  let html = '';
+  for (let i = 1; i <= 3; i++) {
+    const raw = safeStorage.get(SLOT_PREFIX + i);
+    let desc = '비어 있는 슬롯';
+    if (raw) {
+      try {
+        const d = JSON.parse(raw);
+        desc = `Lv.${d.level} | 🏆 ${d.trophies} | 🪙 ${d.gold} | ⚡ ${d.sp} SP`;
+      } catch (e) {}
+    }
+    html += `<div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.12); border-radius:12px; padding:9px 12px;">
+      <div><div style="font-size:12px; font-weight:800;">수동 슬롯 ${i}</div><div style="font-size:11px; color:#94a3b8;">${desc}</div></div>
+      <div style="display:flex; gap:6px;">
+        <button class="btn btn-primary" style="padding:6px 12px; font-size:11px;" onclick="saveSlot(${i})">저장</button>
+        <button class="btn btn-sp" style="padding:6px 12px; font-size:11px;" onclick="loadSlot(${i})">로드</button>
+      </div>
+    </div>`;
+  }
+  el.innerHTML = html;
+}
+
+function saveSlot(i) {
+  safeStorage.set(SLOT_PREFIX + i, JSON.stringify(state));
+  renderSaveSlots();
+  showToast(`💾 슬롯 ${i}에 저장되었습니다!`);
+}
+
+function loadSlot(i) {
+  const raw = safeStorage.get(SLOT_PREFIX + i);
+  if (!raw) return showToast('비어 있는 슬롯입니다.');
+  try {
+    state = Object.assign(createDefaultState(), JSON.parse(raw));
+    state.owned = [...ALL_CAR_IDS];
+    saveGame();
+    applySettingsUI();
+    updateHomeHUD();
+    if (gamePhase === 'home') buildShowcaseCar();
+    renderSaveSlots();
+    showToast(`📂 슬롯 ${i} 데이터를 불러왔습니다!`);
+  } catch (e) {}
+}
+
+function exportBackupCode() {
+  const code = btoa(unescape(encodeURIComponent(JSON.stringify(state))));
+  const inp = document.getElementById('backup-input');
+  inp.value = code;
+  inp.select();
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(code).catch(() => {});
+  }
+  try { document.execCommand('copy'); } catch (e) {}
+  showToast('📋 백업 코드가 복사되었습니다!');
+}
+
+function importBackupCode() {
+  const code = document.getElementById('backup-input').value.trim();
+  if (!code) return;
+  try {
+    const parsed = JSON.parse(decodeURIComponent(escape(atob(code))));
+    state = Object.assign(createDefaultState(), parsed);
+    state.owned = [...ALL_CAR_IDS];
+    saveGame();
+    applySettingsUI();
+    updateHomeHUD();
+    if (gamePhase === 'home') buildShowcaseCar();
+    showToast('✅ 백업 코드 복원 완료!');
+  } catch (e) {
+    showToast('올바르지 않은 백업 코드입니다.');
+  }
+}
+
+function toggleSetting(key) {
+  initAudio();
+  state.settings[key] = !state.settings[key];
+  saveGame();
+  applySettingsUI();
+}
+
+function toggleControlMode() {
+  state.settings.ctrlMode = state.settings.ctrlMode === 'button' ? 'wheel' : 'button';
+  saveGame();
+  applySettingsUI();
+}
+
+function updateCtrlSize(val) {
+  state.settings.ctrlSize = Number(val);
+  saveGame();
+  applySettingsUI();
+}
+
+function grantTestBoost() {
+  state.level = Math.min(100, state.level + 25);
+  state.maxCleared = Math.max(state.maxCleared, state.level - 1);
+  state.gold += 5000;
+  state.dia += 200;
+  state.sp += 20;
+  playSkillSFX();
+  saveGame();
+  updateHomeHUD();
+  showToast('🧪 테스트 지원 완료! (Lv+25 / +5000🪙 / +200💎 / +20 SP)');
+}
+
+function applySettingsUI() {
+  document.getElementById('set-bgm').textContent = state.settings.bgm ? 'ON' : 'OFF';
+  document.getElementById('set-sfx').textContent = state.settings.sfx ? 'ON' : 'OFF';
+  document.getElementById('set-ctrl').textContent = state.settings.ctrlMode === 'button' ? '버튼 조작' : '핸들 조작';
+  document.getElementById('set-size-val').textContent = state.settings.ctrlSize;
+  document.getElementById('set-size-range').value = state.settings.ctrlSize;
+  document.documentElement.style.setProperty('--ctrl-size', state.settings.ctrlSize + 'px');
+
+  const isBtn = state.settings.ctrlMode === 'button';
+  document.getElementById('btn-left').style.display = isBtn ? 'flex' : 'none';
+  document.getElementById('btn-right').style.display = isBtn ? 'flex' : 'none';
+  document.getElementById('wheel-pad').style.display = isBtn ? 'none' : 'flex';
+}
+
+function toggleFullscreen() {
+  if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => showToast('전체화면을 지원하지 않는 환경입니다.'));
+  else document.exitFullscreen().catch(() => {});
+}
+
+/* ============================================================================
+   11. 입력 바인딩
+   ============================================================================ */
+function setupInputEvents() {
+  const bindHold = (elId, key) => {
+    const el = document.getElementById(elId);
+    const on = e => { e.preventDefault(); initAudio(); input[key] = true; el.classList.add('active'); };
+    const off = e => { e.preventDefault(); input[key] = false; el.classList.remove('active'); };
+    el.addEventListener('pointerdown', on);
+    el.addEventListener('pointerup', off);
+    el.addEventListener('pointerleave', off);
+    el.addEventListener('pointercancel', off);
+  };
+  bindHold('btn-left', 'left');
+  bindHold('btn-right', 'right');
+  bindHold('btn-gas', 'gas');
+  bindHold('btn-brake', 'brake');
+
+  const wheelPad = document.getElementById('wheel-pad');
+  let wheelActive = false, wheelCenterX = 0;
+  wheelPad.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    initAudio();
+    wheelActive = true;
+    const r = wheelPad.getBoundingClientRect();
+    wheelCenterX = r.left + r.width / 2;
+    wheelPad.setPointerCapture(e.pointerId);
+  });
+  wheelPad.addEventListener('pointermove', e => {
+    if (!wheelActive) return;
+    const dx = e.clientX - wheelCenterX;
+    input.steerVal = Math.max(-1, Math.min(1, dx / 55));
+    wheelPad.style.transform = `rotate(${input.steerVal * 58}deg)`;
+  });
+  const endWheel = () => {
+    wheelActive = false;
+    input.steerVal = 0;
+    wheelPad.style.transform = 'rotate(0deg)';
+  };
+  wheelPad.addEventListener('pointerup', endWheel);
+  wheelPad.addEventListener('pointercancel', endWheel);
+
+  const canvasBox = document.getElementById('canvas-container');
+  canvasBox.addEventListener('pointerdown', e => {
+    if (gamePhase !== 'home') return;
+    initAudio();
+    isDraggingShowcase = true;
+    dragLastX = e.clientX;
+    dragLastY = e.clientY;
+  });
+  window.addEventListener('pointermove', e => {
+    if (!isDraggingShowcase || gamePhase !== 'home') return;
+    const dx = e.clientX - dragLastX;
+    const dy = e.clientY - dragLastY;
+    dragLastX = e.clientX;
+    dragLastY = e.clientY;
+    homeOrbitYaw -= dx * 0.01;
+    homeOrbitPitch = Math.max(0.06, Math.min(0.62, homeOrbitPitch + dy * 0.006));
+  });
+  window.addEventListener('pointerup', () => { isDraggingShowcase = false; });
+
+  window.addEventListener('keydown', e => {
+    if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' '].includes(e.key)) e.preventDefault();
+    initAudio();
+    if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') input.left = true;
+    if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') input.right = true;
+    if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') input.gas = true;
+    if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') input.brake = true;
+    if (e.key === ' ' || e.code === 'Space') activateSkill();
+    if (e.key === 'Escape' && (gamePhase === 'race' || gamePhase === 'paused')) togglePause();
+  });
+  window.addEventListener('keyup', e => {
+    if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') input.left = false;
+    if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') input.right = false;
+    if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') input.gas = false;
+    if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') input.brake = false;
+  });
+}
+
+/* ============================================================================
+   12. Three.js 초기화 & 경쟁 모드 통합 온라인 랭킹 (Firebase carr-fee42)
+   ============================================================================ */
+function initThree() {
+  scene = new THREE.Scene();
+  camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.1, 460);
+
+  renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+  ambLight = new THREE.AmbientLight(0xffffff, 0.6);
+  scene.add(ambLight);
+  hemiLight = new THREE.HemisphereLight(0x87ceeb, 0x334155, 0.55);
+  scene.add(hemiLight);
+
+  dirLight = new THREE.DirectionalLight(0xffffff, 1.05);
+  dirLight.position.set(22, 42, 26);
+  dirLight.castShadow = true;
+  dirLight.shadow.mapSize.width = 1024;
+  dirLight.shadow.mapSize.height = 1024;
+  scene.add(dirLight);
+
+  celestialGroup = new THREE.Group(); scene.add(celestialGroup);
+  horizonRing = new THREE.Group(); scene.add(horizonRing);
+  canyonGroup = new THREE.Group(); scene.add(canyonGroup);
+  sidewalkGroup = new THREE.Group(); scene.add(sidewalkGroup);
+  cloudGroup = new THREE.Group(); scene.add(cloudGroup);
+  propGroup = new THREE.Group(); scene.add(propGroup);
+  aiGroup = new THREE.Group(); scene.add(aiGroup);
+  effectGroup = new THREE.Group(); scene.add(effectGroup);
+  showcaseGroup = new THREE.Group(); scene.add(showcaseGroup);
+
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+}
+
+const firebaseConfig = {
+  apiKey: "AIzaSyATcJVPqXl0G-fGcN1cwRLmjVEQiuQrTqI",
+  authDomain: "carr-fee42.firebaseapp.com",
+  projectId: "carr-fee42",
+  storageBucket: "carr-fee42.firebasestorage.app",
+  messagingSenderId: "87480001462",
+  appId: "1:87480001462:web:7a7a8142170bdfe5611717",
+  measurementId: "G-D6HWN8R188"
+};
+
+let db = null;
+try {
+  if (typeof firebase !== 'undefined') {
+    firebase.initializeApp(firebaseConfig);
+    db = firebase.firestore();
+  }
+} catch (e) { console.warn('Firebase 초기화 알림:', e); }
+
+async function syncOnlineRanking() {
+  state.trophies = Math.max(0, Math.floor(state.trophies || 0));
+  saveGame();
+  if (!db) return;
+
+  const v = VEHICLES.find(x => x.id === state.selectedCar) || VEHICLES[0];
+  try {
+    await db.collection('rankings').doc(state.playerId).set({
+      nickname: state.nickname,
+      trophies: state.trophies,
+      carName: v.name,
+      carTier: v.tier === 'H' ? 'HIDDEN' : v.tier,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+  } catch (e) { console.warn('랭킹 업로드 실패(오프라인 또는 규칙 확인):', e); }
+}
+
+function saveNicknameAndSync() {
+  const raw = document.getElementById('rank-nick-input').value.trim();
+  if (!raw) return showToast('닉네임을 입력해 주세요!');
+  state.nickname = raw.slice(0, 12);
+  saveGame();
+  syncOnlineRanking().then(() => {
+    showToast('✅ 닉네임 및 트로피가 랭킹에 반영되었습니다!');
+    openCompetitiveModal();
+  });
+}
+
+async function openCompetitiveModal() {
+  openModal('comp-modal');
+
+  // 1) 내 기본 정보 & 현재 차량 표시
+  const v = VEHICLES.find(x => x.id === state.selectedCar) || VEHICLES[0];
+  document.getElementById('rank-nick-input').value = state.nickname;
+  document.getElementById('comp-my-trophy').textContent = Math.max(0, state.trophies);
+  document.getElementById('comp-my-streak').textContent = state.winStreak || 0;
+
+  const cTier = document.getElementById('comp-car-tier');
+  cTier.textContent = v.tier === 'H' ? 'HIDDEN' : v.tier;
+  cTier.className = 'tier-badge tier-' + v.tier;
+  document.getElementById('comp-car-name').textContent = v.name;
+  document.getElementById('comp-car-ovr').textContent = calcOVR(v);
+  document.getElementById('comp-car-spd').textContent = getEffectiveMaxSpeed(v);
+
+  const myRankEl = document.getElementById('comp-my-rank');
+  const listEl = document.getElementById('rank-list');
+  const statusEl = document.getElementById('rank-status');
+
+  if (!db) {
+    myRankEl.textContent = '로컬 모드';
+    statusEl.textContent = '⚠️ Firebase 연결을 확인할 수 없어 로컬 기록만 표시합니다.';
+    listEl.innerHTML = `<div style="padding:12px; background:rgba(56,189,248,0.12); border-radius:10px; font-size:13px;">
+      내 현재 기록: <strong>${state.nickname}</strong> · 🏆 <strong>${Math.max(0, state.trophies)}점</strong>
+    </div>`;
+    return;
+  }
+
+  myRankEl.textContent = '조회 중...';
+  statusEl.textContent = '🔄 실시간 글로벌 랭킹 불러오는 중...';
+
+  try {
+    const snap = await db.collection('rankings').orderBy('trophies', 'desc').limit(50).get();
+    let html = '', rank = 1, myRankStr = '미등록';
+    snap.forEach(doc => {
+      const d = doc.data();
+      const isMe = doc.id === state.playerId;
+      const medal = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `${rank}위`;
+      if (isMe) myRankStr = `${medal} (${rank}위)`;
+      html += `<div style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; border-radius:10px;
+        background:${isMe ? 'rgba(56,189,248,0.22)' : 'rgba(255,255,255,0.05)'}; border:1px solid ${isMe ? '#38bdf8' : 'rgba(255,255,255,0.08)'};">
+        <div><strong>${medal}</strong> <span style="margin-left:6px; font-weight:800;">${d.nickname || '레이서'}</span>
+          <span style="font-size:11px; color:#94a3b8; margin-left:6px;">[${d.carTier || 'D'}] ${d.carName || ''}</span></div>
+        <div style="color:#fbbf24; font-weight:900;">🏆 ${Math.max(0, d.trophies || 0)}</div>
+      </div>`;
+      rank++;
+    });
+    myRankEl.textContent = myRankStr;
+    statusEl.textContent = `🌍 글로벌 상위 ${rank - 1}명 실시간 랭킹`;
+    listEl.innerHTML = html || '<div style="text-align:center; color:#94a3b8; padding:18px;">아직 등록된 랭킹이 없습니다. 플레이 버튼을 눌러 첫 기록을 남겨보세요!</div>';
+  } catch (e) {
+    myRankEl.textContent = '오프라인';
+    statusEl.textContent = '📡 오프라인 상태이거나 Firestore 규칙을 확인해 주세요.';
+  }
+}
+
+window.onload = function () {
+  initThree();
+  setupInputEvents();
+  loadGame(false);
+  setupHomeScene();
+  animate();
+};
+</script>
+</body>
+</html>
